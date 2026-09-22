@@ -8,6 +8,8 @@
 # rolling back is a one-line update-alternatives call.
 
 THYX_MARKER="/* thyx:begin */"
+# Closes the block above; scripts/build is what writes it out.
+# shellcheck disable=SC2034
 THYX_MARKER_END="/* thyx:end */"
 
 _thyx_has_alternatives() {

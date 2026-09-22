@@ -119,7 +119,9 @@ _thyx_uninstall_verify() {
 main() {
   _thyx_uninstall_parse_args "$@"
 
-  THYX_REPO_DIR="$(_thyx_find_repo "${THYX_SCRIPT_DIR}")"
+  # Uninstalling needs nothing out of the repo, but refusing to run from
+  # outside it keeps this from being mistaken for a system-wide tool.
+  _thyx_find_repo "${THYX_SCRIPT_DIR}" >/dev/null
   THYX_LOG_PREFIX="thyx-uninstall"
   _thyx_setup_log
 

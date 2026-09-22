@@ -73,7 +73,7 @@ _thyx_build_tokens() {
   local bg_color field_bg_color field_text placeholder
   local accent accent_text accent_hover
   local chrome_fg chrome_hover_fg
-  local show_logo form_position form_offset form_pad_left form_pad_right
+  local form_position form_offset form_pad_left form_pad_right
 
   font="$(_thyx_conf_get Font "Plus Jakarta Sans")"
   font_size="$(_thyx_conf_number FontSize 11)"
@@ -93,7 +93,6 @@ _thyx_build_tokens() {
   accent_hover="$(_thyx_conf_color HoverLoginButtonBackgroundColor "${accent}")"
   chrome_fg="$(_thyx_conf_color SystemButtonsIconsColor "#f3c4aa")"
   chrome_hover_fg="$(_thyx_conf_color HoverSystemButtonsIconsColor "${accent}")"
-  show_logo="$(_thyx_conf_bool ShowLogo false)"
 
   form_position="$(_thyx_conf_get FormPosition center)"
   case "${form_position}" in
@@ -186,8 +185,8 @@ _thyx_build_tokens() {
 
     # The user list already carries FormPadding on every side, so its shift
     # has to be folded into that rather than replace it.
-    [UserBoxPadLeft]="$(( $(_thyx_conf_number FormPadding 24) + ${form_pad_left} ))"
-    [UserBoxPadRight]="$(( $(_thyx_conf_number FormPadding 24) + ${form_pad_right} ))"
+    [UserBoxPadLeft]="$(( $(_thyx_conf_number FormPadding 24) + form_pad_left ))"
+    [UserBoxPadRight]="$(( $(_thyx_conf_number FormPadding 24) + form_pad_right ))"
 
     [MenuButtonSize]="$(_thyx_conf_number MenuButtonSize 44)"
     [MenuButtonRadius]="$(( $(_thyx_conf_number MenuButtonSize 44) / 2 ))"

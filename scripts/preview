@@ -148,6 +148,11 @@ main() {
   rm -f -- "${THYX_PREVIEW_OUT}"
 
   # The shell, the capture and their bus all live and die inside this call.
+  # The inner script is single-quoted on purpose: every value it needs arrives
+  # through the environment above, so nothing expands in this shell. Its own
+  # stderr appends to the same log the shell writes, which is the point --
+  # one file holds the whole failed run.
+  # shellcheck disable=SC2016,SC2094
   GNOME_SHELL_DATADIR="${datadir}" \
   FONTCONFIG_FILE="${fontconf}" \
   XDG_CONFIG_HOME="${confhome}" \
