@@ -347,9 +347,10 @@ _thyx_dconf_profile_effective() {
 _thyx_dconf_profile_render() {
   local src="${1:-}"
 
-  printf '# This profile is managed by thyx (%s).\n' "${THYX_THEME_ID}"
-  printf '# It exists because the packaged profile lists no system database,\n'
-  printf '# which leaves /etc/dconf/db/%s.d unread. Removing thyx restores it.\n' "${THYX_DCONF_SYSTEM_DB}"
+  printf '# This profile is managed by thyx.\n'
+  printf '# It shadows %s, which lists no system\n' "${THYX_DCONF_PROFILE_SRC}"
+  printf '# database and so leaves /etc/dconf/db/%s.d unread. Uninstalling\n' "${THYX_DCONF_SYSTEM_DB}"
+  printf '# thyx removes this file again.\n'
 
   if [ -n "${src}" ] && [ -f "${src}" ]; then
     awk -v db="system-db:${THYX_DCONF_SYSTEM_DB}" '
