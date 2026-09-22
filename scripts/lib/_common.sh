@@ -39,8 +39,13 @@ _thyx_ok() {
   printf '%b\n\n' "${THYX_GREEN}${THYX_BOLD}ok:${THYX_NC} $*"
 }
 
+# On stderr, like _thyx_die. Several builders return a path by printing it and
+# warn on the way past -- _thyx_build_logo and _thyx_build_clock_config both do
+# -- and they are called inside command substitutions, so a warning on stdout
+# is captured as the value instead of being shown. That turned "no wordmark to
+# draw" into a greeter pointed at a logo file that was never written.
 _thyx_warn() {
-  printf '%b\n\n' "${THYX_YELLOW}${THYX_BOLD}warn:${THYX_NC} $*"
+  printf '%b\n\n' "${THYX_YELLOW}${THYX_BOLD}warn:${THYX_NC} $*" >&2
 }
 
 _thyx_info() {
