@@ -104,8 +104,8 @@ frame taken from that clip, because GDM has no video layer to play it on.
 ## Quick start
 
 ```bash
-git clone https://github.com/rccyx/thyx
-cd thyx
+git clone https://github.com/Yodakole1/thyx-gdm
+cd thyx-gdm
 
 ./scripts/preview          # see it, without installing anything
 ./scripts/install          # make it your login screen
