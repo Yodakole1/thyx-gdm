@@ -150,13 +150,22 @@ stage {
   margin-bottom: 0.6em;
 }
 
+/* Flat fill, never a gradient. GNOME Shell puts the account's picture on this
+   actor as an inline `background-image`, and St treats a gradient and a
+   background image as strictly either/or -- st-theme-node-drawing.c takes the
+   gradient branch and never looks at the image. A gradient here is therefore
+   the same thing as deleting everybody's profile picture. */
 .login-dialog .user-widget .user-icon {
-  background-gradient-direction: vertical;
-  background-gradient-start: @FieldGradientTop@;
-  background-gradient-end: @AvatarBg@;
+  background-color: @AvatarBg@;
   color: @LoginFieldTextColor@;
   border: @AvatarBorderWidth@px solid @AvatarBorderColor@;
   border-radius: @AvatarRadius@px;
+}
+
+/* Shell adds this class once a real picture is in place. Yaru hangs a faint
+   inset ring on it, which lands inside our border as a second, paler edge. */
+.login-dialog .user-widget .user-icon.user-avatar {
+  box-shadow: none;
 }
 
 .login-dialog .user-widget.vertical .user-icon {

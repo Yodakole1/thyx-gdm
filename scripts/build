@@ -172,7 +172,7 @@ _thyx_build_tokens() {
     [FormPadding]="$(_thyx_conf_number FormPadding 24)"
     [ListSpacing]="$(_thyx_conf_number ListSpacing 12)"
     [ListItemPadding]="$(_thyx_conf_number ListItemPadding 12)"
-    [UserNameSize]="$(awk -v f="${font_size}" 'BEGIN { printf "%d", f * 1.5 }')"
+    [UserNameSize]="$(_thyx_conf_number UserNameSize "$(awk -v f="${font_size}" 'BEGIN { printf "%d", f * 1.3 }')")"
     [StatusIconSize]="$(_thyx_conf_number StatusIconSize 16)"
     [PanelHeight]="$(_thyx_conf_number PanelHeight "$(awk -v c="${clock_size}" 'BEGIN { h = c * 2.4; if (h < 32) h = 32; printf "%d", h }')")"
     [LogoMarginBottom]="$(_thyx_conf_number LogoBottomMargin 56)"
