@@ -1,47 +1,96 @@
-name: CI
+name: ci
 
 on:
   push:
-    branches:
-      - main
+    branches: [main, gdm]
   pull_request:
-
-concurrency:
-  group: CI-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  changes:
-    uses: ./.github/workflows/on-workflow-call-check-changes.yml
+  shell:
+    name: shellcheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
 
-  shellcheck:
-    needs: changes
-    if: needs.changes.outputs.non_docs == 'true'
-    uses: ./.github/workflows/on-workflow-call-shell-check.yml
+      - name: shellcheck
+        run: |
+          shellcheck --version
+          shellcheck -x \
+            scripts/build \
+            scripts/install \
+            scripts/uninstall \
+            scripts/preview \
+            scripts/lib/*.sh
 
-  format:
-    needs: changes
-    if: needs.changes.outputs.non_docs == 'true'
-    uses: ./.github/workflows/on-workflow-call-format.yml
+  python:
+    name: python
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
 
-  lint:
-    needs: changes
-    if: needs.changes.outputs.non_docs == 'true'
-    uses: ./.github/workflows/on-workflow-call-lint.yml
+      - name: compile
+        run: python3 -m py_compile scripts/lib/_preview.py
 
-  nix-smoke:
-    needs:
-      - shellcheck
-      - format
-      - lint
-    uses: ./.github/workflows/on-workflow-call-nix.yml
+  build:
+    name: build every preset
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
 
-  distro-smoke:
-    needs:
-      - shellcheck
-      - format
-      - lint
-    uses: ./.github/workflows/on-workflow-call-distro-smoke.yml
+      # gnome-shell-common carries the stock gdm-theme.gresource the build
+      # derives from; without it there is nothing to append to.
+      - name: dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libglib2.0-bin ffmpeg gnome-shell-common
+
+      - name: build theme.conf
+        run: ./scripts/build
+
+      - name: build every preset
+        run: |
+          set -euo pipefail
+          for preset in presets/*.conf; do
+            echo "==> ${preset}"
+            ./scripts/build --config "${preset}" --quiet
+          done
+
+      - name: the built bundle must be loadable and carry our block
+        run: |
+          set -euo pipefail
+          gresource list build/gnome-shell-theme.gresource > /tmp/listing
+          grep -qx /org/gnome/shell/theme/gdm.css /tmp/listing
+          grep -qx /org/gnome/shell/theme/thyx-background.jpg /tmp/listing
+          gresource extract build/gnome-shell-theme.gresource \
+            /org/gnome/shell/theme/gdm.css > /tmp/gdm.css
+          grep -qF 'thyx:begin' /tmp/gdm.css
+          grep -qF 'thyx:end' /tmp/gdm.css
+          # no template token may survive into the shipped stylesheet
+          ! grep -qE '@[A-Za-z0-9_]+@' /tmp/gdm.css
+
+      - name: a rebuild must not stack the override block
+        run: |
+          set -euo pipefail
+          ./scripts/build --quiet
+          gresource extract build/gnome-shell-theme.gresource \
+            /org/gnome/shell/theme/gdm.css > /tmp/again.css
+          test "$(grep -cF 'thyx:begin' /tmp/again.css)" -eq 1
+
+      - name: a bad colour must fail the build
+        run: |
+          set -euo pipefail
+          sed 's/^LoginButtonBackgroundColor=.*/LoginButtonBackgroundColor="orange"/' \
+            theme.conf > /tmp/bad.conf
+          if ./scripts/build --config /tmp/bad.conf --quiet; then
+            echo "expected the build to reject a non-hex colour"
+            exit 1
+          fi

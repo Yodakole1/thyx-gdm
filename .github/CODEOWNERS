@@ -1,2 +1,2 @@
-/.github/workflows/ @rccyx
-/.github/actions/ @rccyx
+# Upstream Thyx, its design system and its presets are by @rccyx.
+# This fork retargets that design to GDM.

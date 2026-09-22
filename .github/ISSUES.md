@@ -1,68 +1,84 @@
 # Issues
 
-Have you read the [Guide?](https://www.google.com/search?q=/docs/guide.md)
+Have you read the [guide](../docs/guide.md)? The
+[how it works](../README.md#how-it-works) section explains what the build
+actually produces, which answers a good share of questions on its own.
 
-Is it an actual bug? As in, a bug regarding what this greeter system is supposed to do, but doesn't? Maybe one of the theme options doesn't actually work.
+**This fork themes GDM.** If you run SDDM, you want
+[upstream Thyx](https://github.com/rccyx/thyx) — issues about SDDM belong
+there, not here.
 
-Maybe install/uninstall blows up? Although this goes through extensive testing in CI for the supported distros, so if it works in a reproducible environment in VM runners, it's most likely not the real issue, and the real one is a local state mutation/environmental edge case rather than broken source code.
+Before opening anything, a few things that are not bugs:
 
-Source code bugs are bugs in QML, transitions don't work or something. Things like this.
+- **No video background.** GNOME Shell's greeter has no video layer. A clip
+  contributes one frame and that is the ceiling.
+- **The form is centred.** GDM decides that, and CSS cannot move it.
+- **The clock is in the top bar.** That is the only clock the greeter has.
+  `ClockSize` grows it; it will not become a giant centred clock.
+- **The preview shows no account list.** GDM will not hand a greeter proxy to
+  a user who is already logged in. This is expected; see the guide.
+- **The lock screen is unchanged.** `Super+L` is your own session's shell, not
+  GDM.
 
-Or is it visual changes like users dropdown menu, hide/show password toggles, another preset etc? If that, the [LICENSE](/LICENSE) allows forking.
+## If you are locked out
 
-So did the installer/uninstaller fail? Any logs? What does `~/.cache/thyx/*.log` say?
-
-Did SDDM already work before installing this? Does it still work with another theme?
-
-Also, what version is SDDM? Is it even active?
+Do this first, then open the issue:
 
 ```bash
-systemctl is-enabled sddm
-systemctl is-active sddm
-systemctl status sddm --no-pager
+# Ctrl+Alt+F3 to reach a TTY, log in, then:
+sudo update-alternatives --remove gdm-theme.gresource \
+  /usr/share/gnome-shell/theme/thyx/gnome-shell-theme.gresource
+sudo systemctl restart gdm
 ```
 
-And what WM/DE?
+## What to include
+
+The logs, first:
 
 ```bash
-echo $XDG_CURRENT_DESKTOP
+ls ~/.cache/thyx/
+cat ~/.cache/thyx/thyx-install-*.log | tail -60
 ```
 
-With which Distro you're on?
+Which GNOME and which distro:
 
 ```bash
+gnome-shell --version
 cat /etc/os-release
+echo "$XDG_CURRENT_DESKTOP / $XDG_SESSION_TYPE"
 ```
 
-Did the installer work cleanly, but the old theme still appears?
+Whether GDM is actually your display manager:
 
 ```bash
-grep -RIn '^[[:space:]]*Current[[:space:]]*=' \
-  /etc/sddm.conf \
-  /etc/sddm.conf.d \
-  /usr/lib/sddm/sddm.conf.d \
-  /usr/share/sddm/sddm.conf.d \
-  2>/dev/null || true
+systemctl status display-manager --no-pager | head -3
 ```
+
+What the greeter resolves to, and what Thyx thinks it installed:
 
 ```bash
-test -d /usr/share/sddm/themes/thyx && echo "thyx directory exists"
-test -f /usr/share/sddm/themes/thyx/Main.qml && echo "Main.qml exists"
-test -f /usr/share/sddm/themes/thyx/metadata.desktop && echo "metadata.desktop exists"
+update-alternatives --display gdm-theme.gresource
+readlink -f /usr/share/gnome-shell/gdm-theme.gresource
+cat /var/lib/thyx/install.state
 ```
+
+Whether the bundle is intact:
 
 ```bash
-sed -n '/^\[Theme\]/,/^\[/p' /etc/sddm.conf 2>/dev/null || true
+gresource list /usr/share/gnome-shell/theme/thyx/gnome-shell-theme.gresource | head
 ```
 
-Does preview work, but the real login screen fails?
-
-What the logs show for the preview?
+Whether the greeter settings landed:
 
 ```bash
-./scripts/preview
+cat /etc/dconf/db/gdm.d/95-thyx
 ```
 
+If the build itself failed, the whole output of:
+
 ```bash
-sddm --version 2>/dev/null || sddm-greeter --version 2>/dev/null || true
+./scripts/build
 ```
+
+If the greeter looks wrong rather than broken, a photo of the screen and your
+`theme.conf` say more than a description will.

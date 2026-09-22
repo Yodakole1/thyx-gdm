@@ -1,483 +1,345 @@
 <div align="center">
 
-# **_Thyx_**
+# **_Thyx_** · GDM
 
-<br/>
+**A GDM login screen with the Thyx design system.**
+
 <p align="center">
-  <a href="https://github.com/rccyx/thyx/actions/workflows/ci.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/rccyx/thyx/ci.yml?branch=main&style=for-the-badge&color=black&labelColor=111111&logo=githubactions&logoColor=white" alt="CI Status"/>
-  </a>
   <a href="#installation">
     <img src="https://img.shields.io/badge/Platform-Linux-black?logo=linux&logoColor=white&style=for-the-badge&labelColor=111111" alt="Platform: Linux"/>
   </a>
-    <a href="https://github.com/rccyx/thyx">
-    <img src="https://img.shields.io/github/repo-size/rccyx/thyx?style=for-the-badge&color=black&labelColor=111111&logo=github&logoColor=white" alt="Size"/>
+  <a href="#requirements">
+    <img src="https://img.shields.io/badge/Greeter-GDM%20%2F%20GNOME%20Shell-black?logo=gnome&logoColor=white&style=for-the-badge&labelColor=111111" alt="GDM / GNOME Shell"/>
   </a>
-  <a href="https://github.com/rccyx/thyx/blob/main/LICENSE">
+  <a href="./LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-black?logo=mit&logoColor=white&style=for-the-badge&labelColor=111111" alt="License: MIT"/>
   </a>
 </p>
 
 </div>
 
-## Demo
+---
 
-<div align="center">
-  <video title="demo" src="https://github.com/user-attachments/assets/85eaaf53-369d-4301-bc83-29367407abb7" width="100%" controls>
-    Your browser does not support the video tag.
-  </video>
-</div>
+## What this is
+
+[Thyx](https://github.com/rccyx/thyx) is a beautiful SDDM theme written in QML. This fork keeps its
+design system — the palettes, the wallpapers, the type, the soft translucent
+pills — and rebuilds it for **GDM**, the login screen GNOME ships.
+
+That is not a port in the usual sense. SDDM runs a QML application you write
+end to end. GDM has no such seam: its greeter *is* GNOME Shell, and the only
+thing you can hand it is a stylesheet. So the QML is gone, and in its place is
+a build that reads the same `theme.conf` and produces a GNOME Shell greeter
+resource.
+
+**Use this fork if you run GNOME.** Use [upstream](https://github.com/rccyx/thyx) if you run SDDM.
+
+## What changed from upstream
+
+| | upstream Thyx | this fork |
+| --- | --- | --- |
+| Greeter | SDDM | GDM / GNOME Shell |
+| Theme format | QML application | GNOME Shell `gresource` + CSS |
+| Config | `theme.conf` | `theme.conf`, same idea, GDM-shaped keys |
+| Presets | 5 | the same 5, re-derived |
+| Video backgrounds | yes | **no** — GDM cannot play video; clips contribute one frame |
+| Blur | at runtime, per frame | baked in at build time, free at runtime |
+| Preview | `sddm-greeter --test-mode` | a real headless greeter, screenshotted |
+| Install | copies a theme directory | registers a `gdm-theme` alternative |
+
+Fixed along the way, in the design system these presets came from:
+
+- The focus ring was hard-coded `#8ab4f8`, a blue that fought every preset it
+  shipped with. It is `FocusRingColor` now.
+- Field colours were built by slicing the hex string by character index, so
+  anything that was not exactly `#rrggbb` silently produced garbage. Colours
+  are parsed and validated, and a bad one stops the build.
+- The field translucency was a hard-coded `0.25`. It is `FieldOpacity` now.
+- `DateFormat` was documented but never read; the date was hard-coded to
+  English day and month names. Date and time now follow your locale, through
+  the settings GDM actually reads.
+
+## Requirements
+
+- GNOME Shell with GDM — developed against **GNOME Shell 46 / Ubuntu 24.04**
+- `glib-compile-resources` and `gresource` (`libglib2.0-bin` on Debian and Ubuntu, `glib2` elsewhere)
+- `ffmpeg` or ImageMagick, to scale, blur and dim the wallpaper
+- `dconf`, for the greeter's font and clock settings
+- For `scripts/preview`: `python3-gi` and `gstreamer1.0-pipewire`
+
+On Ubuntu and Debian:
+
+```bash
+sudo apt install libglib2.0-bin ffmpeg dconf-cli python3-gi gstreamer1.0-pipewire
+```
 
 ## Presets
 
-Ships with 5 total full visual systems.
+Five palettes, each with its own wallpaper.
 
-4 static, and 1 dynamic.
+| | |
+| :---: | :---: |
+| **Cinder** — ember and soot | **Gilded** — old gold on deep pine |
+| **Blush** — soft rose, easy at 7am | **Malachite** — green stone and copper |
+| **Sakura** — pale petals on ink | |
 
-Each one is a complete [preset](/presets/) with its own palette and [background](/backgrounds/).
+Cinder is the default. Upstream's Cinder was a looping video; here it is a
+frame taken from that clip, because GDM has no video layer to play it on.
 
-The design system allows infinite customization, so you can also [create your own](#creating-your-own).
+## Quick start
 
-|                                                             **Gilded**                                                              |                                                             **Blush**                                                              |
-| :---------------------------------------------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------------------------------------------: |
-| <img src="https://github.com/user-attachments/assets/160c90cf-a557-4d6b-ae78-9cb2703e5a11" width="100%" height="240" alt="Gilded"/> | <img src="https://github.com/user-attachments/assets/7a1be327-1097-4b7e-b860-c4b0ab94e3be" width="100%" height="240" alt="Blush"/> |
+```bash
+git clone https://github.com/rccyx/thyx
+cd thyx
 
-|                                                             **Malachite**                                                              |                                                             **Sakura**                                                              |
-| :------------------------------------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------------------------------: |
-| <img src="https://github.com/user-attachments/assets/d0863369-cff9-40da-b516-554b149fcb6a" width="100%" height="240" alt="Malachite"/> | <img src="https://github.com/user-attachments/assets/256fc98a-fcbe-410e-b1ae-7d400e25ad66" width="100%" height="240" alt="Sakura"/> |
+./scripts/preview          # see it, without installing anything
+./scripts/install          # make it your login screen
+```
 
-### Dynamic Preset (Cinder)
+Log out or reboot to see it for real. Your running session is never touched,
+and nothing is restarted behind your back.
 
-It supports video backgrounds.
+## Preview
 
-<div align="center">
-  <video title="demo" src="https://github.com/user-attachments/assets/2338a5a3-1ac6-4003-86b8-00bb3bc218f6" width="100%" controls>
-    Your browser does not support the video tag.
-  </video>
-</div>
+```bash
+./scripts/preview
+./scripts/preview --config presets/malachite.conf
+```
 
-<details>
-<summary><strong>Supported formats and guidelines</strong></summary>
+This starts a **real GNOME Shell in greeter mode**, headless, on its own D-Bus
+session and its own throwaway config, pointed at the theme you just built. It
+records one frame through Mutter's screencast interface and saves it to
+`build/preview.png`.
 
-<br/>
+Nothing is installed, your session keeps running, and you cannot lock yourself
+out with it.
 
-Video files can be used anywhere a background image is accepted and are rendered as full-screen, looped, ambient backgrounds.
-
-#### Supported formats
-
-- `mp4`
-- `webm`
-- `mkv`
-- `mov`
-- `m4v`
-- `avi`
-
-For maximum compatibility and reliability, **H.264-encoded MP4** is strongly recommended.
-
-**For optimal results:**
-
-- Keep videos short (~6–10 seconds)
-- No audio
-- Prefer 720p or 1080p
-- Designed to loop infinitely.
-
-</details>
-
-## Guide
-
-Want a fast mental model of what this is, what SDDM is, and how recovery works? Read [this](./docs/guide.md).
+One honest limitation: the account list stays empty in the preview. GDM will
+not hand a greeter proxy to a user who is already logged in, so the form has
+nothing to draw. What you are checking here is the backdrop, the top bar, the
+type and the palette. The form you see for real at the login screen.
 
 ## Installation
 
-Using **NixOS?**
-
-<details>
-<summary>Use the theme as a flake.</summary>
-
-<br/>
-
-```nix
-{
-  inputs = {
-    thyx.url = "github:rccyx/thyx";
-  };
-
-  outputs = { nixpkgs, thyx, ... }: {
-    nixosConfigurations.host = nixpkgs.lib.nixosSystem {
-      system = "x86_64-linux";
-
-      modules = [
-        thyx.nixosModules.default
-
-        {
-          services.displayManager.sddm.thyx.enable = true;
-          services.displayManager.sddm.wayland.enable = true;
-        }
-      ];
-    };
-  };
-}
-```
-
-Then rebuild.
-
 ```bash
-sudo nixos-rebuild switch --flake .#host
+./scripts/install           # builds, shows a plan, asks, installs
+./scripts/install --yes     # no questions
+./scripts/install --config presets/sakura.conf
 ```
 
-That's it.
-
-</details>
-<br/>
-
-Otherwise, the installer is atomic and idempotent and will auto setup everything with one command for the following:
-
-- **Arch**
-
-- **Fedora**
-
-- **Ubuntu**
-  - Jammy / 22.04
-  - Noble / 24.04
-  - Resolute / 26.04
-
-- **Debian**
-  - Bookworm
-  - Trixie
-  - Forky
-  - Sid
-
-- **Linux Mint**
-- **Pop!\_OS**
-- **Zorin**
-- **openSUSE**
-- **Gentoo**
-- **Alpine**
-
-Clone and run:
-
-```bash
-bash ./scripts/install
-```
-
-For non interactive installs, pass `--yes`.
-
-```bash
-bash ./scripts/install --yes
-```
-
-The installer is local, explicit, and idempotent. It validates the theme tree, installs missing runtime packages, checks required commands, stages the install atomically, writes the SDDM theme selection, and keeps the current session alive.
-
-During setup, it prints the exact plan, asks for confirmation and sudo, installs end to end, and logs the run.
-
-If you use another distro, have a look at the generic [package contract](/scripts/data/deps.generic) and map it through your package manager. The same install can be done manually by following the same steps of:
+The installer prints exactly what it will do before it touches anything, asks
+for confirmation and sudo, and logs the run to `~/.cache/thyx/`.
 
 <details>
 <summary><strong>What the installer does</strong></summary>
 
 <br/>
 
-It runs in this order.
+1. finds the repo, and refuses to run outside one
+2. checks for GNOME Shell and the tools it needs
+3. builds the theme from `theme.conf` (see **How it works** below)
+4. prints the plan and asks for confirmation and sudo
+5. installs the bundled fonts to `/usr/local/share/fonts/thyx` and refreshes the font cache
+6. writes the bundle to `/usr/share/gnome-shell/theme/thyx/gnome-shell-theme.gresource`, staged and renamed so the greeter never reads a half-written file
+7. registers it as the `gdm-theme.gresource` alternative at priority 20, above Yaru's 15 and stock GNOME's 10 — or, where `update-alternatives` does not exist, backs the stock file up once and replaces it
+8. writes the greeter's font, clock and logo settings to `/etc/dconf/db/gdm.d/95-thyx` and runs `dconf update`
+9. records what it did in `/var/lib/thyx/install.state`
+10. verifies that the greeter now resolves to the Thyx bundle
+11. never restarts GDM
 
-1. finds the Thyx repo from the script path or current directory
-2. detects the distro
-3. selects the matching package manifest from [`scripts/data/deps.map`](./scripts/data/deps.map)
-4. installs missing runtime packages from the selected manifest
-5. verifies required shell commands, the SDDM greeter, runtime packages, and `fc-cache` when bundled fonts exist
-6. prints the install plan
-7. asks for confirmation and sudo
-8. removes the previous fixed stage path at `/usr/share/sddm/themes/.thyx.stage` if exists
-9. removes the previous fixed rollback path at `/usr/share/sddm/themes/.thyx.previous` if exists
-10. creates a fresh stage directory at `/usr/share/sddm/themes/.thyx.stage`
-11. copies the repo into the stage directory with `rsync --delete`
-12. strips dev-only files from the staged install:
-    - `.git/`
-    - `.github/`
-    - `fonts/` # installed system wide
-    - `.qmllint.ini`
-    - ...
-
-13. validates the staged theme before activation
-14. moves an existing `/usr/share/sddm/themes/thyx` to `/usr/share/sddm/themes/.thyx.previous` during activation
-15. moves `/usr/share/sddm/themes/.thyx.stage` into `/usr/share/sddm/themes/thyx`
-16. validates the activated theme
-17. restores `/usr/share/sddm/themes/.thyx.previous` if activation or validation fails
-18. removes `/usr/share/sddm/themes/.thyx.previous` after a successful activation
-19. installs bundled fonts into `/usr/local/share/fonts/thyx`
-20. refreshes the font cache
-21. backs up `/etc/sddm.conf` once to `/etc/sddm.conf.thyx-back` when an existing config is present
-22. writes `Current=thyx` under `[Theme]` in `/etc/sddm.conf`
-23. enables SDDM when `systemctl` exists
-24. verifies the installed theme, selected SDDM theme, metadata, config file, and fonts
-25. prints a safe greeter test command
-26. logs everything to `~/.cache/thyx/thyx-install-*.log`
-
-After installation, the theme is at `/usr/share/sddm/themes/thyx`. This is where SDDM loads it from.
+**The stock theme is never edited.** Thyx builds a complete copy of it and
+installs that alongside. Upstream's file stays exactly where it was, which is
+what makes the uninstall a one-liner.
 
 </details>
 
 ## Uninstallation
 
-Thyx comes off as clean as if… **it never got in.**
-
-Ships with a first-class [uninstall](/scripts/uninstall) script so you don’t brick your login screen or get left hanging.
-
-It logs everything and prints a plan before proceeding.
-
-Run it from the repo.
-
 ```bash
 ./scripts/uninstall
+./scripts/uninstall --keep-fonts
 ```
 
-For non-interactive uninstall:
+It removes the alternative (or restores the backup), deletes the theme, the
+greeter settings, the state file and the fonts, then verifies that the greeter
+resolves to a real file that is not ours.
+
+It is also the recovery path. If the login screen is ever unhappy, switch to a
+TTY with **Ctrl+Alt+F3**, log in, `cd` to this repo and run:
 
 ```bash
 ./scripts/uninstall --yes
 ```
 
-<details>
-<summary><strong>What the uninstaller does</strong></summary>
+See [the guide](./docs/guide.md#recovery) for the full recovery protocol,
+including the one-line `update-alternatives` version that needs no repo.
 
-<br/>
+## Configuration
 
-It runs in this order.
-
-- validates the repo tree
-- verifies required uninstall commands
-- prints a plan before touching anything
-- asks for confirmation and sudo
-- restores `/etc/sddm.conf` from `/etc/sddm.conf.thyx-back` when that backup exists
-- otherwise removes `Current=thyx` from `/etc/sddm.conf`
-- removes:
-  - `/usr/share/sddm/themes/thyx`
-  - `/usr/share/sddm/themes/.thyx.stage`
-  - `/usr/share/sddm/themes/.thyx.previous`
-  - `/usr/local/share/fonts/thyx`
-
-- refreshes font cache when fonts were removed
-- verifies that Thyx files are gone
-- verifies that `/etc/sddm.conf` no longer selects `thyx`
-- never restarts SDDM automatically
-- logs everything to `~/.cache/thyx/thyx-uninstall-*.log`
-
-</details>
-
-When you’re ready to apply changes, restart SDDM from a TTY:
-
-```bash
-sudo systemctl restart sddm
-```
-
-> [!WARNING]
-> Restarting SDDM will log you out of your current session!
-
-Or reboot.
-
-## Preview (no logout)
-
-You can safely test edits using the preview command so you don’t get locked out and have to [recover](./docs/guide.md#recovery-protocol) via TTY.
-
-```bash
-./scripts/preview
-```
-
-Runs the SDDM greeter in test mode. Your session is untouched.
-
-Close the window when done (your compositor’s normal close shortcut, for example `Alt+Q` on Hyprland).
-
-## Configuration guide
-
-All settings are in `theme.conf`. Edit, preview, repeat.
-
-### Using a preset
-
-From `/usr/share/sddm/themes/thyx`, copy any preset config from `presets/` over the main `theme.conf`.
+Everything lives in `theme.conf`. Edit, preview, repeat.
 
 ```bash
 cp presets/malachite.conf theme.conf
-```
-
-Preview it
-
-```bash
 ./scripts/preview
+./scripts/install
 ```
 
-When satisfied, restart SDDM
+Or keep your own, and never touch `theme.conf`:
 
 ```bash
-sudo systemctl restart sddm
+cp presets/gilded.conf presets/mine.conf
+$EDITOR presets/mine.conf
+./scripts/preview --config presets/mine.conf
+./scripts/install --config presets/mine.conf
 ```
 
-Or reboot to take effect.
+### Background
 
-### Creating your own
+| Setting | Description | Example |
+| --- | --- | --- |
+| `Background` | Wallpaper path, relative to the repo | `"backgrounds/cinder.jpg"` |
+| `BackgroundColor` | Behind the image, and before it loads | `"#070304"` |
+| `Blur` | `0.0` – `1.0`, applied at build time | `"0.35"` |
+| `Dim` | `0.0` – `1.0`, applied at build time | `"0.20"` |
+| `BackgroundMaxWidth` | Downscale ceiling, in pixels | `"2560"` |
 
-You can create custom presets by duplicating an existing preset and modifying it.
+Blur and dim are baked into the image when you build, not computed by the
+greeter on every frame. A 13 MB wallpaper becomes a few hundred KB, and the
+login screen draws one flat blit.
 
-```bash
-cp presets/gilded.conf presets/my-custom.conf
-cp presets/my-custom.conf theme.conf
-./scripts/preview
-```
+Point `Background` at an `.mp4`, `.webm`, `.mkv`, `.mov`, `.m4v` or `.avi` and
+the build pulls a frame out of it with ffmpeg. There is no video at the login
+screen — GNOME Shell has no layer to play one on — so this is a still.
 
-Edit freely, keep as many presets as you want, and swap them by copying into `theme.conf`.
+### Typography
 
-> [!TIP]
-> You can wire a shell function or keybinds to switch presets instantly. I personally use `Alt + R` to rotate the login screen and matching [desktop](https://github.com/rccyx/osyx) themes.
+| Setting | Description | Example |
+| --- | --- | --- |
+| `Font` | Family name as fontconfig knows it | `"Plus Jakarta Sans"` |
+| `FontSize` | Base size, in points | `"11"` |
 
-## Fonts
+Ships with **Plus Jakarta Sans**, installed system wide by the installer so the
+greeter — which runs as its own user, long before yours — can see it.
 
-Ships with **Plus Jakarta Sans**, and the installer installs it system wide for SDDM.
-
-The `Font` setting in `theme.conf` must match the font family name exactly as your system registers it.
-
-```ini
-Font="Plus Jakarta Sans"
-```
-
-### Switching fonts
-
-If you’ve installed additional fonts on your system, you can instruct the greeter to use a different one by updating the `Font` setting.
-
-To see all available font families:
+To use something else, list what you have and use the exact family name:
 
 ```bash
 fc-list -f "%{family}\n" | sort -u
 ```
 
-Then replace the `Font` value with the exact family name.
+### Clock
 
-For example, if you have `Inter` already installed:
+GDM has no separate clock widget. The top bar's date menu is the only clock on
+screen, so Thyx grows it into the greeter's timestamp.
 
-```ini
-Font="Inter"
-```
+| Setting | Description | Options |
+| --- | --- | --- |
+| `ClockSize` | Size in points | `"20"` |
+| `TimeTextColor` | Clock colour | `"#ffd0bf"` |
+| `DateTextColor` | Colour on hover | `"#e4b2a3"` |
+| `HourFormat` | Time format | `"24h"`, `"12h"` |
+| `ShowDate` | Show the date | `"true"`, `"false"` |
+| `ShowWeekday` | Show the weekday | `"true"`, `"false"` |
+| `ShowSeconds` | Show seconds | `"true"`, `"false"` |
 
-After changing fonts, rebuild the font cache:
+### Shape and motion
 
-```bash
-sudo fc-cache -f -v
-```
+| Setting | Description | Example |
+| --- | --- | --- |
+| `Radius` | Pill radius for fields and buttons | `"24"` |
+| `RadiusSmall` | Radius for menu items and chips | `"10"` |
+| `AnimationDuration` | Hover and focus transitions, in ms | `"200"` |
+| `FieldOpacity` | How much of the field colour shows, `0.0` – `1.0` | `"0.25"` |
+| `FormOpacity` | Panel behind the form, `0.0` – `1.0` | `"0.00"` |
 
-### Basic settings
+### Colours
 
-| Setting                            | Description                                | Example                    |
-| ---------------------------------- | ------------------------------------------ | -------------------------- |
-| `Font`                             | System font family                         | `"Plus Jakarta Sans"`      |
-| `FontSize`                         | Base font size in points                   | `"12"`                     |
-| `Background`                       | Wallpaper or video path, relative to theme | `"backgrounds/gilded.jpg"` |
-| `AllowUppercaseLettersInUsernames` | Username capitalization behavior           | `"true"`, `"false"`        |
+Every colour is `#rrggbb`. Anything else stops the build with the name of the
+setting that was wrong.
 
-### Time and date display
+**Form** — `FormBackgroundColor`, `LoginFieldBackgroundColor`,
+`LoginFieldTextColor`, `PlaceholderTextColor`, `FocusRingColor`,
+`FocusRingWidth`
 
-| Setting      | Description | Options                                       |
-| ------------ | ----------- | --------------------------------------------- |
-| `HourFormat` | Time format | `"HH:mm"` (24h), `"hh:mm AP"` (12h), `"long"` |
-| `DateFormat` | Date format | `"dddd d MMMM"` gives `Thursday 29 August`    |
+**Primary action** — `LoginButtonBackgroundColor`, `LoginButtonTextColor`,
+`HoverLoginButtonBackgroundColor`
 
-### Layout and form
+**Secondary controls** — `SystemButtonsIconsColor`,
+`HoverSystemButtonsIconsColor`, `EnvironmentButtonTextColor`,
+`HoverEnvironmentButtonTextColor`
 
-| Setting        | Description               | Options                         |
-| -------------- | ------------------------- | ------------------------------- |
-| `FormPosition` | Login form position       | `"left"`, `"center"`, `"right"` |
-| `Blur`         | Background blur intensity | `"0.0"` to `"1.0"`              |
+**Menus** — `DropdownTextColor`, `DropdownSelectedTextColor`,
+`DropdownBackgroundColor`, `DropdownSelectedBackgroundColor`,
+`DropdownBorderColor`
 
-### Animation
+**Messages** — `WarningTextColor`, used for Caps Lock and for
+"Sorry, that didn't work"
 
-| Setting             | Description                     | Options                                 |
-| ------------------- | ------------------------------- | --------------------------------------- |
-| `AnimationDuration` | Hover or focus transition speed | `"80"`, `"120"`, `"300"`                |
-| `AnimationEasing`   | Animation curve                 | `"OutQuart"`, `"OutCubic"`, `"OutBack"` |
+**Avatar** — `AvatarSize`, `AvatarRadius`, `AvatarBorderWidth`,
+`AvatarBorderColor`
 
-### Colors
+You set one field colour and one opacity; the resting, hover and focus states
+are derived from them so they stay in step.
 
-#### Text colors
+### Greeter behaviour
 
-- `DateTextColor` - Date display color
-- `TimeTextColor` - Time display color
-- `LoginFieldTextColor` - Username text
-- `PasswordFieldTextColor` - Password text
-- `PlaceholderTextColor` - Input placeholder text
-- `LoginButtonTextColor` - Login button text
-- `EnvironmentButtonTextColor` - Environment selector text
-- `SystemButtonsIconsColor` - Power, restart, and sleep button icons and labels
+| Setting | Description | Options |
+| --- | --- | --- |
+| `ShowLogo` | The vendor logo above the form | `"true"`, `"false"` |
+| `DisableUserList` | Ask for a username instead of listing accounts | `"true"`, `"false"` |
 
-#### Background colors
+`DisableUserList="true"` is worth considering if you would rather not
+advertise who has an account on the machine.
 
-- `FormBackgroundColor` - Login form background
-- `LoginFieldBackgroundColor` - Username input background
-- `PasswordFieldBackgroundColor` - Password input background
-- `LoginButtonBackgroundColor` - Login button background
+## How it works
 
-#### Dropdown colors
+GNOME Shell loads its greeter stylesheet from a single compiled resource
+bundle, `gdm-theme.gresource`. There is no theme directory to drop files into
+and no supported hook to add a stylesheet, so a GDM theme is, unavoidably, a
+replacement bundle.
 
-- `DropdownTextColor` - Dropdown menu text
-- `DropdownSelectedTextColor` - Selected item text
-- `DropdownBackgroundColor` - Dropdown background
-- `DropdownSelectedBackgroundColor` - Selected item background
-- `DropdownBorderColor` - Dropdown border
-- `DropdownSelectedBorderColor` - Selected item border
+`scripts/build`:
 
-#### Hover effects
+1. finds the **stock** bundle — never Thyx's own output, so the override block
+   cannot stack up on rebuilds
+2. extracts all of it, about 150 resources
+3. renders `src/overrides.css.in` against `theme.conf` and **appends** it to
+   the stock `gdm.css`, between markers, so nothing upstream is lost and every
+   Thyx rule is an override
+4. scales, blurs and dims the wallpaper and adds it to the bundle
+5. writes the greeter's gsettings to `build/greeter.dconf`
+6. compiles it all back and checks the result is readable and has a `gdm.css`
 
-- `HoverLoginButtonBackgroundColor` - Login button on hover
-- `HoverSystemButtonsIconsColor` - System buttons on hover
-- `HoverEnvironmentButtonTextColor` - Environment button on hover
+Appending rather than replacing is what keeps this maintainable: when GNOME or
+Yaru updates their stylesheet, rebuild and you are on the new one with Thyx
+still on top.
 
-## Customization examples
+`scripts/install` then puts that bundle somewhere of its own and points the
+`gdm-theme.gresource` alternative at it. That is the whole of the system
+change, and `update-alternatives --remove` is the whole of the undo.
 
-### Change form position
+## Requirements this cannot meet
 
-```ini
-FormPosition="center"
-# or
-FormPosition="right"
-```
+Worth saying plainly, because upstream's README promises some of these:
 
-### Adjust colors for a dark theme
+- **No video backgrounds.** GNOME Shell's greeter has no video layer.
+- **No form position.** GDM centres its dialog and the position is not
+  expressible in CSS.
+- **No giant centred clock.** The greeter has one clock, in the top bar.
+  `ClockSize` grows it; it will not become the 108pt clock the QML drew.
+- **No fingerprint auto-start setting.** GDM starts fingerprint
+  authentication by itself when PAM is configured for it. There is nothing
+  to enable.
+- **Caps Lock, password reveal and the account list are GDM's own.** They are
+  styled here, not implemented here.
 
-```ini
-DateTextColor="#e0e0e0"
-TimeTextColor="#ffffff"
-FormBackgroundColor="#1a1a1a"
-```
+## Credits
 
-### Speed up animations
+Thyx, its design system, its presets and its wallpapers are by
+[@rccyx](https://github.com/rccyx). This fork carries that design to GDM.
 
-```ini
-AnimationDuration="50"
-AnimationEasing="OutCubic"
-```
-
-### Use a video background
-
-```ini
-Background="backgrounds/my-video.mp4"
-```
-
-Video backgrounds use the same `Background` setting as image backgrounds.
-
-## Automatic fingerprint login
-
-If your system uses PAM fingerprint authentication, it can start fingerprint login as soon as the screen appears.
-
-```ini
-AutoFingerprintOnLoad=true
-```
-
-When enabled, it automatically calls PAM’s fingerprint check on load and logs in as soon as the scan matches.
-
-If fingerprint isn’t configured or fails, the greeter falls back to password login normally.
-
-> [!IMPORTANT]
-> PAM must already be [configured](https://wiki.archlinux.org/title/Fprint) for fingerprints in `/etc/pam.d/sddm` with `pam_fprintd.so`.
-
-## Issues & Features
-
-Read [this](./.github/ISSUES.md) first.
+Wallpaper credits are in [backgrounds/README.md](./backgrounds/README.md).
 
 ## License
 
-MIT © @rccyx
+MIT, as upstream.

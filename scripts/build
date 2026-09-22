@@ -1,0 +1,296 @@
+#!/usr/bin/env bash
+#
+# Builds a GNOME Shell greeter theme from theme.conf.
+#
+# Output: build/gnome-shell-theme.gresource, a complete copy of the stock
+# greeter bundle with Thyx's stylesheet appended and the wallpaper baked in.
+# Nothing outside build/ is touched; scripts/install does the system part.
+
+set -Eeuo pipefail
+
+THYX_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
+# shellcheck source=scripts/lib/_constants.sh
+. "${THYX_SCRIPT_DIR}/lib/_constants.sh"
+# shellcheck source=scripts/lib/_common.sh
+. "${THYX_SCRIPT_DIR}/lib/_common.sh"
+# shellcheck source=scripts/lib/_repo.sh
+. "${THYX_SCRIPT_DIR}/lib/_repo.sh"
+# shellcheck source=scripts/lib/_conf.sh
+. "${THYX_SCRIPT_DIR}/lib/_conf.sh"
+# shellcheck source=scripts/lib/_gdm.sh
+. "${THYX_SCRIPT_DIR}/lib/_gdm.sh"
+
+THYX_CONFIG_FILE=""
+THYX_QUIET=0
+
+_thyx_build_usage() {
+  cat <<'EOF'
+usage: scripts/build [--config FILE] [--quiet]
+
+  --config FILE   build from FILE instead of theme.conf
+  --quiet         only report the final artefact
+EOF
+}
+
+_thyx_build_parse_args() {
+  while [ "${#}" -gt 0 ]; do
+    case "$1" in
+      --config)
+        shift
+        [ "${#}" -gt 0 ] || _thyx_die "--config needs a file"
+        THYX_CONFIG_FILE="$1"
+        ;;
+      --quiet|-q) THYX_QUIET=1 ;;
+      --help|-h) _thyx_build_usage; exit 0 ;;
+      *) _thyx_die "unknown arg: $1" ;;
+    esac
+    shift
+  done
+}
+
+_thyx_say() {
+  [ "${THYX_QUIET}" -eq 1 ] || _thyx_step "$@"
+}
+
+_thyx_require_build_tools() {
+  local missing=()
+  local cmd
+
+  for cmd in gresource glib-compile-resources awk find sort; do
+    command -v "${cmd}" >/dev/null 2>&1 || missing+=("${cmd}")
+  done
+
+  if [ "${#missing[@]}" -gt 0 ]; then
+    _thyx_die "missing build tools: ${missing[*]} (install libglib2.0-bin / glib2)"
+  fi
+}
+
+# Turns theme.conf into the values the stylesheet template expects.
+_thyx_build_tokens() {
+  local font font_size radius radius_small anim
+  local field_opacity form_opacity clock_size
+  local bg_color field_bg_color field_text placeholder
+  local accent accent_text accent_hover
+  local chrome_fg chrome_hover_fg
+  local show_logo
+
+  font="$(_thyx_conf_get Font "Plus Jakarta Sans")"
+  font_size="$(_thyx_conf_number FontSize 11)"
+  radius="$(_thyx_conf_number Radius 24)"
+  radius_small="$(_thyx_conf_number RadiusSmall 10)"
+  anim="$(_thyx_conf_number AnimationDuration 200)"
+  field_opacity="$(_thyx_conf_number FieldOpacity 0.25)"
+  form_opacity="$(_thyx_conf_number FormOpacity 0)"
+  clock_size="$(_thyx_conf_number ClockSize 20)"
+
+  bg_color="$(_thyx_conf_color BackgroundColor "#000000")"
+  field_bg_color="$(_thyx_conf_color LoginFieldBackgroundColor "#16090a")"
+  field_text="$(_thyx_conf_color LoginFieldTextColor "#ffffff")"
+  placeholder="$(_thyx_conf_color PlaceholderTextColor "#b77e74")"
+  accent="$(_thyx_conf_color LoginButtonBackgroundColor "#f16f1c")"
+  accent_text="$(_thyx_conf_color LoginButtonTextColor "#070304")"
+  accent_hover="$(_thyx_conf_color HoverLoginButtonBackgroundColor "${accent}")"
+  chrome_fg="$(_thyx_conf_color SystemButtonsIconsColor "#f3c4aa")"
+  chrome_hover_fg="$(_thyx_conf_color HoverSystemButtonsIconsColor "${accent}")"
+  show_logo="$(_thyx_conf_bool ShowLogo false)"
+
+  THYX_TOKENS=(
+    [Font]="${font}"
+    [FontSize]="${font_size}"
+    [Radius]="${radius}"
+    [RadiusSmall]="${radius_small}"
+    [AnimationDuration]="${anim}"
+    [ClockSize]="${clock_size}"
+
+    [BackgroundColor]="${bg_color}"
+    [LoginFieldTextColor]="${field_text}"
+    [PlaceholderTextColor]="${placeholder}"
+    [TimeTextColor]="$(_thyx_conf_color TimeTextColor "${field_text}")"
+    [DateTextColor]="$(_thyx_conf_color DateTextColor "${placeholder}")"
+    [WarningTextColor]="$(_thyx_conf_color WarningTextColor "${accent_hover}")"
+
+    [LoginButtonBackgroundColor]="${accent}"
+    [LoginButtonTextColor]="${accent_text}"
+    [HoverLoginButtonBackgroundColor]="${accent_hover}"
+    [PressedLoginButtonBackgroundColor]="$(_thyx_shade "${accent_hover}" 84)"
+
+    [SystemButtonsIconsColor]="${chrome_fg}"
+    [HoverSystemButtonsIconsColor]="${chrome_hover_fg}"
+    [EnvironmentButtonTextColor]="$(_thyx_conf_color EnvironmentButtonTextColor "${chrome_fg}")"
+    [HoverEnvironmentButtonTextColor]="$(_thyx_conf_color HoverEnvironmentButtonTextColor "${chrome_hover_fg}")"
+
+    [DropdownTextColor]="$(_thyx_conf_color DropdownTextColor "${field_text}")"
+    [DropdownSelectedTextColor]="$(_thyx_conf_color DropdownSelectedTextColor "${accent_text}")"
+    [DropdownBackgroundColor]="$(_thyx_conf_color DropdownBackgroundColor "${bg_color}")"
+    [DropdownSelectedBackgroundColor]="$(_thyx_conf_color DropdownSelectedBackgroundColor "${accent}")"
+    [DropdownBorderColor]="$(_thyx_conf_color DropdownBorderColor "${bg_color}")"
+
+    [FocusRingColor]="$(_thyx_conf_color FocusRingColor "${accent}")"
+    [FocusRingWidth]="$(_thyx_conf_number FocusRingWidth 2)"
+
+    # Translucent surfaces, derived so one colour plus one opacity drives the
+    # resting, hover and focus states coherently.
+    [FieldBg]="$(_thyx_rgba "${field_bg_color}" "${field_opacity}")"
+    [FieldBgHover]="$(_thyx_rgba "${field_bg_color}" "$(_thyx_alpha_scale "${field_opacity}" 150)")"
+    [FieldBgFocus]="$(_thyx_rgba "${field_bg_color}" "$(_thyx_alpha_scale "${field_opacity}" 190)")"
+    [FormBg]="$(_thyx_rgba "$(_thyx_conf_color FormBackgroundColor "${bg_color}")" "${form_opacity}")"
+    [ChromeBg]="$(_thyx_rgba "${chrome_fg}" 0.10)"
+    [ChromeHoverBg]="$(_thyx_rgba "${chrome_fg}" 0.16)"
+    [ChromeActiveBg]="$(_thyx_rgba "${chrome_fg}" 0.22)"
+    [AvatarBg]="$(_thyx_rgba "${field_bg_color}" "$(_thyx_alpha_scale "${field_opacity}" 120)")"
+    [AvatarBorderColor]="$(_thyx_conf_color AvatarBorderColor "${accent}")"
+    [AvatarBorderWidth]="$(_thyx_conf_number AvatarBorderWidth 2)"
+    [AvatarSize]="$(_thyx_conf_number AvatarSize 128)"
+    [AvatarRadius]="$(_thyx_conf_number AvatarRadius 64)"
+
+    # Metrics that follow the type scale unless the config overrides them.
+    [FieldWidth]="$(_thyx_conf_number FieldWidth 18)"
+    [FieldHeight]="$(_thyx_conf_number FieldHeight "$(awk -v f="${font_size}" 'BEGIN { printf "%d", f * 3.6 }')")"
+    [FieldPaddingX]="$(_thyx_conf_number FieldPaddingX 20)"
+    [FieldRadius]="${radius}"
+    [FormPadding]="$(_thyx_conf_number FormPadding 24)"
+    [ListSpacing]="$(_thyx_conf_number ListSpacing 12)"
+    [ListItemPadding]="$(_thyx_conf_number ListItemPadding 12)"
+    [UserNameSize]="$(awk -v f="${font_size}" 'BEGIN { printf "%d", f * 1.5 }')"
+    [StatusIconSize]="$(_thyx_conf_number StatusIconSize 16)"
+    [PanelHeight]="$(_thyx_conf_number PanelHeight "$(awk -v c="${clock_size}" 'BEGIN { h = c * 2.4; if (h < 32) h = 32; printf "%d", h }')")"
+    [LogoHeight]="$([ "${show_logo}" = "true" ] && printf '48' || printf '1')"
+    [LogoPadding]="$([ "${show_logo}" = "true" ] && printf '24' || printf '0')"
+    [LogoOpacity]="$([ "${show_logo}" = "true" ] && printf '255' || printf '0')"
+  )
+
+  # Inside an array literal only the last substitution sets $?, so a rejected
+  # value earlier in the list would otherwise slip through as an empty token.
+  local key
+  for key in "${!THYX_TOKENS[@]}"; do
+    [ -n "${THYX_TOKENS[${key}]}" ] ||
+      _thyx_die "${key} resolved to nothing; check the matching setting in ${THYX_CONFIG_FILE}"
+  done
+}
+
+# Some of Thyx's settings are not stylesheet material: GDM reads them as
+# gsettings. Emitting them as a dconf keyfile lets scripts/install drop the
+# file straight into GDM's profile and scripts/preview load the same values
+# into a throwaway database, so a preview and an install agree.
+_thyx_write_greeter_settings() {
+  local out="${1:?}"
+  local font font_size clock_format
+
+  font="$(_thyx_conf_get Font "Plus Jakarta Sans")"
+  font_size="$(_thyx_conf_number FontSize 11)"
+
+  case "$(_thyx_conf_get HourFormat "24h")" in
+    12h|12|"hh:mm AP") clock_format="12h" ;;
+    24h|24|"HH:mm") clock_format="24h" ;;
+    *) _thyx_die "HourFormat must be 12h or 24h" ;;
+  esac
+
+  {
+    printf '[org/gnome/login-screen]\n'
+    if [ "$(_thyx_conf_bool ShowLogo false)" = "true" ]; then
+      printf "logo='/usr/share/plymouth/ubuntu-logo.png'\n"
+    else
+      printf "logo=''\n"
+    fi
+    printf 'disable-user-list=%s\n' "$(_thyx_conf_bool DisableUserList false)"
+    printf '\n'
+    printf '[org/gnome/desktop/interface]\n'
+    printf "font-name='%s %s'\n" "${font}" "${font_size}"
+    printf "clock-format='%s'\n" "${clock_format}"
+    printf 'clock-show-date=%s\n' "$(_thyx_conf_bool ShowDate true)"
+    printf 'clock-show-weekday=%s\n' "$(_thyx_conf_bool ShowWeekday true)"
+    printf 'clock-show-seconds=%s\n' "$(_thyx_conf_bool ShowSeconds false)"
+    printf "color-scheme='prefer-dark'\n"
+  } > "${out}"
+}
+
+main() {
+  _thyx_build_parse_args "$@"
+  _thyx_require_build_tools
+
+  THYX_REPO_DIR="$(_thyx_find_repo "${THYX_SCRIPT_DIR}")"
+  THYX_BUILD_DIR="${THYX_REPO_DIR}/build"
+
+  [ -n "${THYX_CONFIG_FILE}" ] || THYX_CONFIG_FILE="${THYX_REPO_DIR}/theme.conf"
+  [ -f "${THYX_CONFIG_FILE}" ] || _thyx_die "config not found: ${THYX_CONFIG_FILE}"
+
+  local stage="${THYX_BUILD_DIR}/stage"
+  local css="${stage}/gdm.css"
+  local overrides="${THYX_BUILD_DIR}/overrides.css"
+  local xml="${THYX_BUILD_DIR}/thyx.gresource.xml"
+  local target="${THYX_BUILD_DIR}/${THYX_GRESOURCE_NAME}"
+
+  mkdir -p -- "${THYX_BUILD_DIR}"
+
+  _thyx_say "config"
+  _thyx_conf_load "${THYX_CONFIG_FILE}"
+  [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "read ${THYX_CONFIG_FILE#"${THYX_REPO_DIR}"/} (${#THYX_CONF[@]} settings)"
+
+  _thyx_say "stock theme"
+  local stock resources
+  stock="$(_thyx_stock_gresource)"
+  resources="$(_thyx_extract_stock "${stock}" "${stage}")"
+  [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "extracted ${resources} resources from ${stock}"
+
+  _thyx_strip_previous_overrides "${css}"
+
+  _thyx_say "background"
+  local background background_rule=""
+  background="$(_thyx_conf_get Background "")"
+
+  if [ -n "${background}" ]; then
+    local source="${THYX_REPO_DIR}/${background}"
+    [ -f "${source}" ] || source="${background}"
+
+    local baked="${THYX_BACKGROUND_RESOURCE}.jpg"
+    _thyx_prepare_background \
+      "${source}" \
+      "${stage}/${baked}" \
+      "$(_thyx_conf_number BackgroundMaxWidth 2560)" \
+      "$(_thyx_conf_number Blur 0)" \
+      "$(_thyx_conf_number Dim 0)" \
+      "$(_thyx_conf_number BackgroundQuality 3)"
+
+    background_rule="  background-image: url(\"resource://${THYX_RESOURCE_PREFIX}/${baked}\"); background-size: cover;"
+
+    if [ "${THYX_QUIET}" -eq 0 ]; then
+      _thyx_ok "baked ${background} -> $(du -h "${stage}/${baked}" | cut -f1)"
+    fi
+  else
+    _thyx_warn "no Background set: the greeter falls back to BackgroundColor"
+  fi
+
+  _thyx_say "stylesheet"
+  _thyx_build_tokens
+  THYX_TOKENS[BackgroundImage]="${background_rule}"
+  _thyx_render_template "${THYX_REPO_DIR}/src/overrides.css.in" "${overrides}"
+
+  {
+    printf '\n%s\n' "${THYX_MARKER}"
+    cat "${overrides}"
+    printf '%s\n' "${THYX_MARKER_END}"
+  } >> "${css}"
+
+  [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "appended $(wc -l < "${overrides}") lines to gdm.css"
+
+  _thyx_say "greeter settings"
+  _thyx_write_greeter_settings "${THYX_BUILD_DIR}/greeter.dconf"
+  [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "wrote build/greeter.dconf"
+
+  _thyx_say "bundle"
+  _thyx_write_gresource_xml "${stage}" "${xml}"
+  _thyx_compile_gresource "${stage}" "${xml}" "${target}"
+
+  # Lets install and --check tell whether the bundle still matches its source.
+  {
+    printf 'source=%s\n' "${stock}"
+    printf 'source_sha256=%s\n' "$(sha256sum "${stock}" | cut -d' ' -f1)"
+    printf 'config=%s\n' "${THYX_CONFIG_FILE}"
+    printf 'built=%s\n' "$(date -Iseconds)"
+  } > "${THYX_BUILD_DIR}/build.info"
+
+  _thyx_ok "built ${target} ($(du -h "${target}" | cut -f1))"
+}
+
+main "$@"

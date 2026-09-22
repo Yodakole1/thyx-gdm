@@ -1,12 +1,193 @@
 #!/usr/bin/env bash
+#
+# Renders the greeter with the freshly built theme and saves a screenshot.
+#
+# Nothing is installed and your session is untouched: GNOME Shell is started
+# headless, in greeter mode, on its own D-Bus session, pointed at a throwaway
+# data directory whose gdm-theme.gresource is the one from build/.
+#
+# The account list stays empty -- GDM refuses to hand a greeter proxy to a user
+# who is already logged in -- so this shows the backdrop, the top bar and the
+# overall palette. The form itself you see for real at the login screen.
 
-if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
-    echo "Wayland session detected. Using QT_QPA_PLATFORM=wayland"
-    PLATFORM="wayland"
-else
-    echo "X11 session detected. Using QT_QPA_PLATFORM=xcb"
-    PLATFORM="xcb"
-fi
+set -Eeuo pipefail
 
-QT_QPA_PLATFORM="${PLATFORM}" sddm-greeter-qt6 --test-mode --theme "${PWD}"
+THYX_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
+# shellcheck source=scripts/lib/_constants.sh
+. "${THYX_SCRIPT_DIR}/lib/_constants.sh"
+# shellcheck source=scripts/lib/_common.sh
+. "${THYX_SCRIPT_DIR}/lib/_common.sh"
+# shellcheck source=scripts/lib/_repo.sh
+. "${THYX_SCRIPT_DIR}/lib/_repo.sh"
+
+THYX_PREVIEW_OUT=""
+THYX_PREVIEW_CONFIG=""
+THYX_PREVIEW_RES="1920x1080"
+THYX_PREVIEW_BUILD=1
+THYX_PREVIEW_OPEN=1
+
+_thyx_preview_usage() {
+  cat <<'EOF'
+usage: scripts/preview [options]
+
+  --config FILE     preview this config instead of theme.conf
+  --out FILE        where to write the screenshot (default: build/preview.png)
+  --resolution WxH  virtual monitor size (default: 1920x1080)
+  --no-build        use build/ as-is instead of rebuilding first
+  --no-open         do not open the screenshot afterwards
+EOF
+}
+
+_thyx_preview_parse_args() {
+  while [ "${#}" -gt 0 ]; do
+    case "$1" in
+      --config) shift; [ "${#}" -gt 0 ] || _thyx_die "--config needs a file"; THYX_PREVIEW_CONFIG="$1" ;;
+      --out) shift; [ "${#}" -gt 0 ] || _thyx_die "--out needs a file"; THYX_PREVIEW_OUT="$1" ;;
+      --resolution) shift; [ "${#}" -gt 0 ] || _thyx_die "--resolution needs WxH"; THYX_PREVIEW_RES="$1" ;;
+      --no-build) THYX_PREVIEW_BUILD=0 ;;
+      --no-open) THYX_PREVIEW_OPEN=0 ;;
+      --help|-h) _thyx_preview_usage; exit 0 ;;
+      *) _thyx_die "unknown arg: $1" ;;
+    esac
+    shift
+  done
+}
+
+_thyx_preview_require() {
+  local missing=()
+  local cmd
+
+  for cmd in gnome-shell dbus-run-session gdbus gst-launch-1.0 python3; do
+    command -v "${cmd}" >/dev/null 2>&1 || missing+=("${cmd}")
+  done
+
+  python3 -c 'import gi; from gi.repository import Gio, GLib' >/dev/null 2>&1 ||
+    missing+=("python3-gi")
+
+  gst-inspect-1.0 pipewiresrc >/dev/null 2>&1 ||
+    missing+=("gstreamer1.0-pipewire")
+
+  if [ "${#missing[@]}" -gt 0 ]; then
+    _thyx_die "preview needs: ${missing[*]}"
+  fi
+}
+
+# A data directory GNOME Shell can be pointed at with GNOME_SHELL_DATADIR:
+# everything upstream, except the greeter theme, which is ours.
+_thyx_preview_datadir() {
+  local dest="${1:?}"
+  local gresource="${2:?}"
+  local entry
+
+  rm -rf -- "${dest}"
+  mkdir -p -- "${dest}"
+
+  for entry in /usr/share/gnome-shell/*; do
+    [ -e "${entry}" ] || continue
+    case "$(basename -- "${entry}")" in
+      gdm-theme.gresource) continue ;;
+    esac
+    ln -s -- "${entry}" "${dest}/$(basename -- "${entry}")"
+  done
+
+  cp -f -- "${gresource}" "${dest}/gdm-theme.gresource"
+}
+
+# The bundled font is not installed system wide until scripts/install runs, so
+# the preview stacks it on top of the system config rather than showing a
+# fallback face that the real greeter will never use.
+_thyx_preview_fontconfig() {
+  local out="${1:?}"
+
+  cat > "${out}" <<EOF
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+  <dir>${THYX_REPO_DIR}/fonts</dir>
+</fontconfig>
+EOF
+}
+
+main() {
+  _thyx_preview_parse_args "$@"
+  _thyx_preview_require
+
+  THYX_REPO_DIR="$(_thyx_find_repo "${THYX_SCRIPT_DIR}")"
+  THYX_BUILD_DIR="${THYX_REPO_DIR}/build"
+
+  [ -n "${THYX_PREVIEW_OUT}" ] || THYX_PREVIEW_OUT="${THYX_BUILD_DIR}/preview.png"
+
+  if [ "${THYX_PREVIEW_BUILD}" -eq 1 ]; then
+    if [ -n "${THYX_PREVIEW_CONFIG}" ]; then
+      "${THYX_SCRIPT_DIR}/build" --config "${THYX_PREVIEW_CONFIG}" --quiet
+    else
+      "${THYX_SCRIPT_DIR}/build" --quiet
+    fi
+  fi
+
+  local gresource="${THYX_BUILD_DIR}/${THYX_GRESOURCE_NAME}"
+  [ -f "${gresource}" ] || _thyx_die "nothing built yet: run scripts/build"
+
+  local datadir="${THYX_BUILD_DIR}/preview-datadir"
+  local log="${THYX_BUILD_DIR}/preview.log"
+  local fontconf="${THYX_BUILD_DIR}/preview-fonts.conf"
+  local confhome="${THYX_BUILD_DIR}/preview-config"
+  local settings="${THYX_BUILD_DIR}/greeter.dconf"
+
+  _thyx_step "greeter"
+  _thyx_preview_datadir "${datadir}" "${gresource}"
+  _thyx_preview_fontconfig "${fontconf}"
+
+  # A private XDG_CONFIG_HOME gives the preview its own dconf database, so the
+  # greeter settings can be applied without touching yours.
+  rm -rf -- "${confhome}"
+  mkdir -p -- "${confhome}"
+
+  rm -f -- "${THYX_PREVIEW_OUT}"
+
+  # The shell, the capture and their bus all live and die inside this call.
+  GNOME_SHELL_DATADIR="${datadir}" \
+  FONTCONFIG_FILE="${fontconf}" \
+  XDG_CONFIG_HOME="${confhome}" \
+  THYX_SETTINGS="${settings}" \
+  THYX_RES="${THYX_PREVIEW_RES}" \
+  THYX_OUT="${THYX_PREVIEW_OUT}" \
+  THYX_LOG="${log}" \
+  THYX_GRABBER="${THYX_SCRIPT_DIR}/lib/_preview.py" \
+  dbus-run-session -- bash -c '
+    if [ -f "${THYX_SETTINGS}" ]; then
+      dconf load / < "${THYX_SETTINGS}" || true
+    fi
+
+    gnome-shell --headless --virtual-monitor "${THYX_RES}" --mode=gdm > "${THYX_LOG}" 2>&1 &
+    shell_pid=$!
+
+    for _ in $(seq 1 60); do
+      sleep 0.5
+      gdbus introspect --session --dest org.gnome.Shell \
+        --object-path /org/gnome/Shell >/dev/null 2>&1 && break
+    done
+
+    # Let the backdrop finish fading in before the frame is taken.
+    sleep 2
+
+    python3 "${THYX_GRABBER}" "${THYX_OUT}" >/dev/null
+    status=$?
+
+    kill "${shell_pid}" 2>/dev/null || true
+    wait "${shell_pid}" 2>/dev/null || true
+    exit "${status}"
+  ' 2>> "${log}" || _thyx_die "greeter preview failed; see ${log}"
+
+  [ -s "${THYX_PREVIEW_OUT}" ] || _thyx_die "no screenshot produced; see ${log}"
+
+  _thyx_ok "preview: ${THYX_PREVIEW_OUT}"
+
+  if [ "${THYX_PREVIEW_OPEN}" -eq 1 ] && command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "${THYX_PREVIEW_OUT}" >/dev/null 2>&1 &
+  fi
+}
+
+main "$@"

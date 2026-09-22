@@ -1,127 +1,243 @@
 #!/usr/bin/env bash
-[ -n "${BASH_VERSION:-}" ] || exec bash "$0" "$@"
+#
+# Installs the built theme as GDM's greeter theme.
+#
+# The stock bundle is never edited. Thyx installs its own copy alongside it and
+# points the gdm-theme alternative at it, so `scripts/uninstall` -- or one
+# update-alternatives call from a TTY -- puts everything back.
+
 set -Eeuo pipefail
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+THYX_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
-# shellcheck disable=SC1091
-source "${script_dir}/lib/_constants.sh"
-# shellcheck disable=SC1091
-source "${script_dir}/lib/_common.sh"
-# shellcheck disable=SC1091
-source "${script_dir}/lib/_repo.sh"
-# shellcheck disable=SC1091
-source "${script_dir}/lib/_theme.sh"
-# shellcheck disable=SC1091
-source "${script_dir}/lib/_deps.sh"
-# shellcheck disable=SC1091
-source "${script_dir}/lib/_sddm.sh"
+# shellcheck source=scripts/lib/_constants.sh
+. "${THYX_SCRIPT_DIR}/lib/_constants.sh"
+# shellcheck source=scripts/lib/_common.sh
+. "${THYX_SCRIPT_DIR}/lib/_common.sh"
+# shellcheck source=scripts/lib/_repo.sh
+. "${THYX_SCRIPT_DIR}/lib/_repo.sh"
+# shellcheck source=scripts/lib/_conf.sh
+. "${THYX_SCRIPT_DIR}/lib/_conf.sh"
+# shellcheck source=scripts/lib/_gdm.sh
+. "${THYX_SCRIPT_DIR}/lib/_gdm.sh"
 
-# shellcheck disable=SC2034
-THYX_LOG_PREFIX="thyx install"
-THYX_REPO_DIR="$(_thyx_find_repo "${script_dir}")"
+trap '_thyx_on_err' ERR
 
-_thyx_print_install_plan() {
-  _thyx_step "plan"
-  _thyx_hr
-  printf '%b\n' "${THYX_BOLD}thyx installer${THYX_NC}"
-  _thyx_hr
-  printf 'source:        %s\n' "${THYX_REPO_DIR}"
-  printf 'theme id:      %s\n' "${THYX_THEME_ID}"
-  printf 'theme dst:     %s\n' "${THYX_THEME_DST}"
-  printf 'fonts dst:     %s\n' "${THYX_FONTS_DST}"
-  printf 'sddm conf:     %s\n' "${THYX_SDDM_CONF}"
-  printf 'sddm backup:   %s\n' "${THYX_SDDM_CONF_BACK}"
-  _thyx_hr
-  printf '%s\n' "will do:"
-  printf '%s\n' "  - validate metadata.desktop MainScript and ConfigFile"
-  printf '%s\n' "  - install missing runtime packages from the distro manifest"
-  printf '%s\n' "  - verify required commands, greeter, and qml runtime modules"
-  printf '%s\n' "  - install the theme through one atomic stage"
-  printf '%s\n' "  - install bundled fonts when present"
-  printf '%s\n' "  - backup /etc/sddm.conf once"
-  printf '%s\n' "  - select thyx in /etc/sddm.conf"
-  printf '%s\n' "  - enable sddm when systemctl exists"
-  _thyx_hr
+THYX_INSTALL_BUILD=1
+THYX_INSTALL_CONFIG=""
+
+_thyx_install_usage() {
+  cat <<'EOF'
+usage: scripts/install [--config FILE] [--no-build] [--yes]
+
+  --config FILE   install this config instead of theme.conf
+  --no-build      install what is already in build/
+  --yes, -y       do not ask for confirmation
+EOF
 }
 
-_thyx_enable_sddm_if_systemctl_exists() {
-  command -v systemctl >/dev/null 2>&1 || return 0
+_thyx_install_parse_args() {
+  while [ "${#}" -gt 0 ]; do
+    case "$1" in
+      --config) shift; [ "${#}" -gt 0 ] || _thyx_die "--config needs a file"; THYX_INSTALL_CONFIG="$1" ;;
+      --no-build) THYX_INSTALL_BUILD=0 ;;
+      --yes|-y) THYX_AUTO_YES=1 ;;
+      --help|-h) _thyx_install_usage; exit 0 ;;
+      *) _thyx_die "unknown arg: $1" ;;
+    esac
+    shift
+  done
+}
 
-  _thyx_step "systemd"
-  if _thyx_run systemctl enable sddm.service; then
-    _thyx_ok "sddm enabled"
+_thyx_install_require() {
+  local missing=()
+  local cmd
+
+  for cmd in gresource glib-compile-resources install rm mkdir; do
+    command -v "${cmd}" >/dev/null 2>&1 || missing+=("${cmd}")
+  done
+
+  [ "${#missing[@]}" -eq 0 ] || _thyx_die "missing commands: ${missing[*]}"
+
+  command -v gnome-shell >/dev/null 2>&1 ||
+    _thyx_die "gnome-shell is not installed; this is a GDM theme"
+
+  command -v dconf >/dev/null 2>&1 ||
+    _thyx_warn "dconf is missing: greeter settings (font, clock, logo) will be skipped"
+
+  command -v fc-cache >/dev/null 2>&1 ||
+    _thyx_warn "fc-cache is missing: bundled fonts will not be registered"
+
+  if ! systemctl list-unit-files gdm.service >/dev/null 2>&1 &&
+     ! systemctl list-unit-files gdm3.service >/dev/null 2>&1; then
+    _thyx_warn "no gdm unit found; installing anyway"
+  fi
+}
+
+_thyx_install_plan() {
+  local gresource="${1:?}"
+  local method="${2:?}"
+
+  _thyx_hr
+  _thyx_log "  theme      ${THYX_GRESOURCE_DST}"
+  _thyx_log "  built from $(awk -F= '/^source=/ { print $2 }' "${THYX_BUILD_DIR}/build.info")"
+  _thyx_log "  size       $(du -h "${gresource}" | cut -f1)"
+  _thyx_log "  activation ${method}"
+  if [ "${method}" = "alternatives" ]; then
+    _thyx_log "             update-alternatives --install ${THYX_GDM_LINK} ${THYX_ALTERNATIVE} <theme> ${THYX_ALTERNATIVE_PRIORITY}"
+  else
+    _thyx_log "             $(_thyx_target_file) replaced, backup at ${THYX_GDM_BACKUP}"
+  fi
+  _thyx_log "  fonts      ${THYX_FONTS_DST}"
+  _thyx_log "  settings   ${THYX_DCONF_FILE}"
+  _thyx_log "  state      ${THYX_STATE_FILE}"
+  _thyx_hr
+  _thyx_log ""
+  _thyx_log "  Your current session is not touched. The new greeter appears"
+  _thyx_log "  the next time you log out or reboot."
+  _thyx_log ""
+}
+
+_thyx_install_fonts() {
+  local fonts="${THYX_REPO_DIR}/fonts"
+  local found
+
+  found="$(find "${fonts}" -maxdepth 1 -type f \( -name '*.ttf' -o -name '*.otf' \) 2>/dev/null | wc -l)"
+
+  if [ "${found}" -eq 0 ]; then
+    _thyx_warn "no bundled fonts in ${fonts}; skipping"
     return 0
   fi
 
-  _thyx_warn "could not enable sddm.service"
-}
+  _thyx_run mkdir -p -- "${THYX_FONTS_DST}"
+  _thyx_run find "${fonts}" -maxdepth 1 -type f \( -name '*.ttf' -o -name '*.otf' \) \
+    -exec install -m 0644 -t "${THYX_FONTS_DST}" {} +
 
-_thyx_verify_install() {
-  local current
-  local config_file
-
-  _thyx_step "verify"
-  _thyx_validate_repo_tree "${THYX_THEME_DST}"
-
-  current="$(_thyx_theme_current_from_file "${THYX_SDDM_CONF}")"
-  [ "${current}" = "${THYX_THEME_ID}" ] || _thyx_die "${THYX_SDDM_CONF} selects ${current:-empty}, expected ${THYX_THEME_ID}"
-
-  config_file="$(_thyx_meta_get ConfigFile "${THYX_THEME_DST}/metadata.desktop")"
-  [ "${config_file}" = "theme.conf" ] || _thyx_die "ConfigFile is ${config_file:-empty}, expected theme.conf"
-  [ -f "${THYX_THEME_DST}/${config_file}" ] || _thyx_die "ConfigFile missing: ${THYX_THEME_DST}/${config_file}"
-
-  if grep -RIn 'themes/.*\.conf' "${THYX_THEME_DST}/metadata.desktop" "${THYX_THEME_DST}/theme.conf" "${THYX_THEME_DST}/src" >/dev/null 2>&1; then
-    grep -RIn 'themes/.*\.conf' "${THYX_THEME_DST}/metadata.desktop" "${THYX_THEME_DST}/theme.conf" "${THYX_THEME_DST}/src" || true
-    _thyx_die "installed theme still references themes/*.conf"
+  if command -v fc-cache >/dev/null 2>&1; then
+    _thyx_run fc-cache -f "${THYX_FONTS_DST}" >/dev/null
   fi
 
-  if _thyx_source_has_fonts; then
-    [ -d "${THYX_FONTS_DST}" ] || _thyx_die "fonts directory missing: ${THYX_FONTS_DST}"
-  fi
-
-  _thyx_ok "install verified"
+  _thyx_ok "installed ${found} font file(s) to ${THYX_FONTS_DST}"
 }
 
-_thyx_print_install_hints() {
-  local greeter
+_thyx_install_settings() {
+  local settings="${THYX_BUILD_DIR}/greeter.dconf"
 
-  greeter="$(_thyx_find_one_command sddm-greeter-qt6 sddm-greeter)"
+  if ! command -v dconf >/dev/null 2>&1; then
+    return 0
+  fi
 
-  printf '\n'
-  _thyx_hr
-  printf '%s\n' "safe test command:"
-  printf '  QT_QPA_PLATFORM=xcb %s --test-mode --theme %s\n' "${greeter}" "${THYX_THEME_DST}"
-  printf '%s\n' "when you're ready, restart sddm from a tty:"
-  printf '%s\n' "  sudo systemctl restart sddm"
-  _thyx_hr
+  [ -f "${settings}" ] || { _thyx_warn "no greeter.dconf in build/; skipping settings"; return 0; }
+
+  _thyx_run mkdir -p -- "${THYX_DCONF_DIR}"
+  _thyx_run install -m 0644 -- "${settings}" "${THYX_DCONF_FILE}"
+
+  # GDM reads a compiled database, not the keyfile.
+  _thyx_run dconf update || _thyx_warn "dconf update failed; greeter settings may not apply"
+
+  _thyx_ok "greeter settings at ${THYX_DCONF_FILE}"
+}
+
+_thyx_install_theme() {
+  local gresource="${1:?}"
+
+  _thyx_run mkdir -p -- "${THYX_THEME_ROOT}"
+
+  # Staged then renamed: the greeter never reads a partly written bundle.
+  _thyx_run install -m 0644 -- "${gresource}" "${THYX_GRESOURCE_DST}.new"
+  _thyx_run mv -f -- "${THYX_GRESOURCE_DST}.new" "${THYX_GRESOURCE_DST}"
+
+  _thyx_ok "installed ${THYX_GRESOURCE_DST}"
+}
+
+_thyx_install_state() {
+  local method="${1:?}"
+
+  _thyx_run mkdir -p -- "${THYX_STATE_DIR}"
+  {
+    printf 'version=2\n'
+    printf 'method=%s\n' "${method}"
+    printf 'gresource=%s\n' "${THYX_GRESOURCE_DST}"
+    printf 'installed=%s\n' "$(date -Iseconds)"
+    cat "${THYX_BUILD_DIR}/build.info"
+  } | _thyx_run tee "${THYX_STATE_FILE}" >/dev/null
+}
+
+_thyx_install_verify() {
+  local active
+
+  [ -f "${THYX_GRESOURCE_DST}" ] || _thyx_die "theme missing after install: ${THYX_GRESOURCE_DST}"
+
+  gresource list "${THYX_GRESOURCE_DST}" >/dev/null 2>&1 ||
+    _thyx_die "installed theme is not a readable resource bundle"
+
+  active="$(_thyx_active_gresource || true)"
+  [ -n "${active}" ] || _thyx_die "no greeter theme is selected"
+
+  if [ "${active}" != "${THYX_GRESOURCE_DST}" ]; then
+    _thyx_die "greeter still points at ${active}; thyx did not take effect"
+  fi
+
+  _thyx_ok "greeter theme resolves to ${active}"
 }
 
 main() {
-  trap _thyx_on_err ERR
+  _thyx_install_parse_args "$@"
+  _thyx_install_require
 
-  _thyx_parse_args "$@"
+  THYX_REPO_DIR="$(_thyx_find_repo "${THYX_SCRIPT_DIR}")"
+  THYX_BUILD_DIR="${THYX_REPO_DIR}/build"
+  THYX_LOG_PREFIX="thyx-install"
   _thyx_setup_log
-  _thyx_validate_repo_tree "${THYX_REPO_DIR}"
-  [ "$(_thyx_os_field ID || true)" != "nixos" ] || _thyx_die "NixOS install is declarative; use docs/nix.md. The uninstaller is not supported on NixOS."
-  _thyx_prepare_runtime_manifest "${script_dir}" >/dev/null
 
-  _thyx_print_install_plan
-  _thyx_confirm "proceed? type y to install"
+  if [ "${THYX_INSTALL_BUILD}" -eq 1 ]; then
+    _thyx_step "build"
+    if [ -n "${THYX_INSTALL_CONFIG}" ]; then
+      "${THYX_SCRIPT_DIR}/build" --config "${THYX_INSTALL_CONFIG}"
+    else
+      "${THYX_SCRIPT_DIR}/build"
+    fi
+  fi
+
+  local gresource="${THYX_BUILD_DIR}/${THYX_GRESOURCE_NAME}"
+  [ -f "${gresource}" ] || _thyx_die "nothing built: run scripts/build first"
+  [ -f "${THYX_BUILD_DIR}/build.info" ] || _thyx_die "build/build.info missing: rebuild"
+
+  local method
+  method="$(_thyx_activation_method)"
+
+  _thyx_step "plan"
+  _thyx_install_plan "${gresource}" "${method}"
+  _thyx_confirm "install thyx as the GDM greeter theme? [y/N]"
+
   _thyx_sudo_warmup
 
-  _thyx_install_runtime_deps "${script_dir}"
-  _thyx_check_install_deps "${script_dir}"
-
-  _thyx_install_theme_atomic
+  _thyx_step "fonts"
   _thyx_install_fonts
-  _thyx_select_sddm_theme
-  _thyx_enable_sddm_if_systemctl_exists
-  _thyx_verify_install
-  _thyx_print_install_hints
 
-  _thyx_step "done"
-  _thyx_ok "install finished"
+  _thyx_step "theme"
+  _thyx_install_theme "${gresource}"
+
+  _thyx_step "activate"
+  _thyx_activate "${THYX_GRESOURCE_DST}"
+
+  _thyx_step "settings"
+  _thyx_install_settings
+
+  _thyx_install_state "${method}"
+
+  _thyx_step "verify"
+  _thyx_install_verify
+
+  _thyx_hr
+  _thyx_ok "thyx is installed"
+  _thyx_log "  Preview without logging out:  ./scripts/preview"
+  _thyx_log "  See it for real:              log out, or reboot"
+  _thyx_log "  Undo everything:              ./scripts/uninstall"
+  _thyx_log ""
+  _thyx_log "  If the greeter ever misbehaves, switch to a TTY with Ctrl+Alt+F3"
+  _thyx_log "  and run ./scripts/uninstall from this directory."
+  _thyx_hr
 }
 
 main "$@"

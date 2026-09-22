@@ -1,566 +1,277 @@
 # Guide
 
-Thyx is an SDDM login theme.
+Thyx for GDM is a **login screen** theme. It controls the screen that asks for
+your password before the desktop starts. Once you are in, GDM hands the screen
+to your session and Thyx is no longer on it.
 
-It controls the graphical login screen before the desktop starts. After login, SDDM hands control to the selected desktop session and Thyx leaves the screen.
+This guide covers what GDM is, why theming it looks the way it does, exactly
+what this repo puts on your system, and how to get out of trouble.
 
-This guide starts from the Linux login stack itself, then explains exactly what this repo does, why the files go where they go, how SDDM chooses a theme, how preview works, how uninstall works, and how to recover from a broken login screen.
+---
 
-## The Linux login stack
+## The login stack
 
-A Linux machine can boot into different kinds of login surfaces.
+A Linux machine can boot to several kinds of login surface.
 
-The simplest one is a TTY. A TTY is the plain text login screen shown by the kernel and system services. It asks for a username and password in a terminal-like screen. It works without a graphical desktop, without Wayland, without X11, and without a display manager.
+The simplest is a **TTY** — the plain text login the kernel and systemd
+provide. It needs no desktop, no Wayland, no X11 and no display manager. It is
+always there, and it is your way back if anything goes wrong. Remember
+**Ctrl+Alt+F3**.
 
-A graphical desktop needs more though. Something has to show the login UI, authenticate the user, list available desktop sessions, and start the chosen session. That program is called a display manager.
+A graphical desktop needs something more: a program that draws the login UI,
+authenticates you through PAM, lists the sessions you can start, and starts the
+one you pick. That program is a **display manager**.
 
-A display manager is the login manager for a graphical Linux system.
+| display manager | usually paired with |
+| --- | --- |
+| `gdm` / `gdm3` | GNOME |
+| `sddm` | KDE Plasma, and many custom Wayland setups |
+| `lightdm` | XFCE, Cinnamon, older distros |
+| `ly`, `greetd` | minimal and tiling setups |
 
-Common display managers:
+GNOME, Plasma, XFCE, Hyprland and Sway are **sessions**. The display manager is
+what gets you into one.
 
-| display manager | common use                                                                      |
-| --------------- | ------------------------------------------------------------------------------- |
-| `sddm`          | Qt/QML login manager used by KDE Plasma and many Wayland or custom Linux setups |
-| `gdm3`          | GNOME’s login manager                                                           |
-| `lightdm`       | older lightweight login manager used by some distros and desktop setups         |
-| `ly`            | terminal-style display manager                                                  |
-| `greetd`        | small login daemon often paired with custom greeters                            |
-| `xdm`           | old X11 display manager                                                         |
+This repo themes **GDM**. If you run SDDM, you want
+[upstream Thyx](https://github.com/rccyx/thyx) instead.
 
-GNOME, KDE Plasma, LXQt, XFCE, Hyprland, Sway, and i3 are the sessions that start after login. The display manager is the thing that gets you into one of those sessions:
+---
 
-```text
-boot
-  -> systemd starts display-manager.service
-  -> display manager starts
-  -> greeter appears
-  -> user authenticates
-  -> selected desktop session starts
-  -> login theme disappears
+## Why GDM theming is different
+
+SDDM loads a *theme*: a directory with a QML application in it. You write the
+whole interface — where the clock goes, what the password field looks like,
+what happens on a failed login. Upstream Thyx is about 1,300 lines of QML doing
+exactly that.
+
+GDM has no equivalent. **GDM's greeter is GNOME Shell**, started in a special
+session mode, running the same JavaScript that runs your desktop. There is no
+theme directory, no QML, no hook to add a file. The only thing that is yours to
+change is the **stylesheet**.
+
+So a GDM theme is a stylesheet — and because GNOME Shell reads that stylesheet
+out of a compiled resource bundle rather than from disk, a GDM theme is in
+practice a *replacement bundle*.
+
+```
+/usr/share/gnome-shell/gdm-theme.gresource   <- what the greeter loads
+        |
+        +-- /org/gnome/shell/theme/gdm.css   <- the greeter stylesheet
+        +-- /org/gnome/shell/theme/*.svg     <- ~150 other resources
 ```
 
-Thyx lives only in the greeter part of that chain.
-
-## What SDDM is
-
-SDDM means Simple Desktop Display Manager.
-
-It's a display manager. It owns the graphical login screen. It starts before the desktop session, shows the login UI, talks to PAM for authentication, then launches the selected session.
-
-SDDM is built on Qt. Its themes are written in QML. So this is a QML project. SDDM loads the theme directory, reads the theme metadata, loads the main QML file, and renders that QML as the login screen.
-
-## What's QML?
-
-QML is Qt’s declarative UI language.
-
-A QML file describes a UI tree: windows, rectangles, text, buttons, images, videos, animations, layouts, and behavior. In SDDM themes, QML is the login screen interface.
-
-When SDDM loads a theme, the important pieces are:
-
-| file               | role                                                      |
-| ------------------ | --------------------------------------------------------- |
-| `metadata.desktop` | tells SDDM the theme name, main QML file, and config file |
-| `theme.conf`       | theme configuration values                                |
-| `src/Main.qml`     | main login screen UI                                      |
-| `assets/`          | images, icons, videos, and other visual files             |
-| `fonts/`           | bundled fonts installed into the system font path         |
-
-The QML runs inside the SDDM greeter environment. That environment has its own constraints. It needs system readable files, system readable fonts, and the Qt runtime modules installed at the system level.
-
-## Where Thyx Comes In
-
-Thyx is an SDDM theme, simply the login screen UI. Loaded before the desktop starts, and disappears after login.
-
-Installed here:
+On Ubuntu that path is not a file. It is a symlink managed by
+`update-alternatives`, which is a gift: it means a custom theme can be
+registered as one more alternative and selected by priority, instead of
+overwriting anything.
 
 ```bash
-/usr/share/sddm/themes/thyx
+update-alternatives --display gdm-theme.gresource
 ```
 
-SDDM themes live under `/usr/share/sddm/themes` because SDDM is a system service. It starts before a normal user session exists, so it reads from system locations rather than from a user’s home directory.
+```
+gdm-theme.gresource - auto mode
+  link currently points to /usr/share/gnome-shell/theme/Yaru/gnome-shell-theme.gresource
+/usr/share/gnome-shell/gnome-shell-theme.gresource - priority 10
+/usr/share/gnome-shell/theme/Yaru/gnome-shell-theme.gresource - priority 15
+```
 
-## What Thyx needs
+Thyx registers at priority **20**.
 
-Thyx needs SDDM, an SDDM greeter binary, Qt/QML runtime modules, fontconfig, rsync, and normal Unix tools used by the installer.
+---
 
-## Check the active display manager
+## What the build does
 
-Run:
+`scripts/build` never edits the stock bundle. It builds a new one.
+
+**1. Find the stock bundle.** Specifically the *stock* one — if Thyx is already
+installed, the alternatives list still knows where Yaru's is. Building from
+Thyx's own output would append the override block to a sheet that already has
+it, over and over.
+
+**2. Extract it.** All ~150 resources, to `build/stage/`.
+
+**3. Append, don't replace.** `src/overrides.css.in` is rendered against
+`theme.conf` and appended to the stock `gdm.css` between markers:
+
+```css
+/* thyx:begin */
+  ... every Thyx rule ...
+/* thyx:end */
+```
+
+Everything upstream still applies. Every Thyx rule is an override of it. When
+GNOME or Yaru ships a new stylesheet, you rebuild and you are on the new one
+with Thyx still on top.
+
+One wrinkle worth knowing, because it explains all the `!important` in the
+stylesheet: Ubuntu's Yaru sheet ends with
+
+```css
+* { font-weight: normal !important; text-shadow: none !important; }
+```
+
+A universal selector has zero specificity, so a class selector marked
+`!important` still beats it — which is why Thyx marks the weights it cares
+about and nothing else.
+
+**4. Bake the wallpaper.** Scaled to `BackgroundMaxWidth`, blurred by `Blur`,
+dimmed by `Dim`, written into the bundle as a JPEG. Doing this at build time
+rather than at runtime is why the greeter costs nothing to draw: 13 MB of
+wallpaper becomes a few hundred KB and one flat blit. It is also why `Blur`
+here is not the live blur the QML did — there is no live blur to have.
+
+Point `Background` at a video and ffmpeg pulls one frame out of it. There is no
+video at a GNOME login screen.
+
+**5. Write the greeter's settings.** Some things are not stylesheet material.
+The font, the clock format, whether the weekday shows, whether the vendor logo
+shows, whether accounts are listed — GDM reads those as **gsettings**, from its
+own dconf profile. The build writes them to `build/greeter.dconf`, which the
+installer drops into `/etc/dconf/db/gdm.d/` and the preview loads into a
+throwaway database. Both get the same values that way.
+
+**6. Compile and check.** Back into a `.gresource`, then verified: readable,
+and it has a `gdm.css`. A bundle the shell cannot parse is worse than no theme,
+so this never ships unchecked.
+
+---
+
+## What preview actually runs
+
+`scripts/preview` is not a mockup. It starts **GNOME Shell itself**, in greeter
+mode:
+
+```
+gnome-shell --headless --virtual-monitor 1920x1080 --mode=gdm
+```
+
+inside `dbus-run-session`, with three redirections that keep it away from your
+system:
+
+| variable | effect |
+| --- | --- |
+| `GNOME_SHELL_DATADIR` | the shell loads *your built* `gdm-theme.gresource` |
+| `XDG_CONFIG_HOME` | a private dconf database for the greeter settings |
+| `FONTCONFIG_FILE` | the bundled font, without installing it system wide |
+
+Headless means no window and no output device, so there is nothing to
+screenshot in the usual way — and gdm's session mode does not export
+`org.gnome.Shell.Screenshot` anyway. Instead the preview records the virtual
+monitor through **Mutter's own screencast interface** into PipeWire and keeps a
+single frame.
+
+Nothing is installed. Your session is untouched. You cannot lock yourself out
+with it.
+
+**What you will not see:** the account list and the password field. GDM refuses
+to hand a greeter proxy to a user who is already logged in —
+
+```
+Can only be called before user is logged in
+```
+
+— so the form never initialises. The preview is an honest check of the
+backdrop, the top bar, the type and the palette. The form you check for real,
+at the login screen, with the uninstaller one TTY away.
+
+---
+
+## What ends up on your system
+
+| path | what |
+| --- | --- |
+| `/usr/share/gnome-shell/theme/thyx/gnome-shell-theme.gresource` | the theme |
+| `/usr/share/gnome-shell/gdm-theme.gresource` | the alternatives link, now pointing at Thyx |
+| `/etc/dconf/db/gdm.d/95-thyx` | the greeter's font, clock and logo settings |
+| `/usr/local/share/fonts/thyx/` | Plus Jakarta Sans |
+| `/var/lib/thyx/install.state` | what was installed, and what it was built from |
+| `~/.cache/thyx/thyx-install-*.log` | the log of the run |
+
+Nothing else is modified. The stock bundle is where it always was.
+
+The fonts have to be system wide because the greeter runs as the `gdm` user,
+before you have logged in. A font in your home directory does not exist as far
+as it is concerned.
+
+---
+
+## Recovery
+
+Themes that replace the login screen deserve a way out that does not depend on
+the login screen working. This one has three, in order of how little they need.
+
+### 1. Get to a TTY
+
+**Ctrl+Alt+F3.** Log in with your username and password. You have a shell. The
+graphical login being broken does not affect this.
+
+### 2. Run the uninstaller
 
 ```bash
-cat /etc/X11/default-display-manager 2>/dev/null || true
-systemctl status display-manager --no-pager
+cd /path/to/thyx
+./scripts/uninstall --yes
+sudo systemctl restart gdm
 ```
 
-A system using SDDM usually shows this (or similar path with `/sddm`):
+### 3. If you cannot find the repo
 
-```text
-/usr/bin/sddm
-```
-
-or a systemd status pointing to:
-
-```text
-sddm.service
-```
-
-When using GNOME with gdm3, you'll see:
-
-```text
-/usr/sbin/gdm3
-```
-
-LightDM may shows:
-
-```text
-/usr/sbin/lightdm
-```
-
-If SDDM is not the active display manager, Thyx can still be installed, but it will not appear on the real login screen until SDDM is active. So, you might want to:
-
-## Switch to SDDM
-
-This is on Debian or Ubuntu, but it's the same across distros:
-
-Install SDDM:
+The install is one alternatives entry. Remove it by hand:
 
 ```bash
-sudo apt install sddm
+sudo update-alternatives --remove gdm-theme.gresource \
+  /usr/share/gnome-shell/theme/thyx/gnome-shell-theme.gresource
+sudo systemctl restart gdm
 ```
 
-Choose SDDM as the active display manager:
+`--remove` drops Thyx from the list and `update-alternatives` falls back to the
+highest remaining priority, which is your distro's own theme. That is the whole
+recovery.
+
+On a system without `update-alternatives`, the installer backed the stock file
+up first:
 
 ```bash
-sudo dpkg-reconfigure sddm
+sudo mv /usr/share/gnome-shell/gdm-theme.gresource.thyx-back \
+        /usr/share/gnome-shell/gdm-theme.gresource
+sudo systemctl restart gdm
 ```
 
-To switch back to GNOME’s login manager:
+> [!WARNING]
+> `systemctl restart gdm` ends your graphical session. Save your work first, or
+> just reboot.
+
+### If the greeter shows but looks wrong
+
+That is a stylesheet problem, not a lockout. Log in normally, change
+`theme.conf`, and run `./scripts/install` again.
+
+---
+
+## Living with it
+
+**Switching presets**
 
 ```bash
-sudo dpkg-reconfigure gdm3
+./scripts/install --config presets/sakura.conf
 ```
 
-To check the active display manager again:
+**After a GNOME or Yaru update**
 
-```bash
-cat /etc/X11/default-display-manager 2>/dev/null || true
-systemctl status display-manager --no-pager
-```
-
-## How SDDM chooses a theme
-
-SDDM reads its configuration from:
-
-```bash
-/etc/sddm.conf
-```
-
-Theme selection is controlled by this config section:
-
-```ini
-[Theme]
-Current=theme-name
-```
-
-For Thyx, the value is:
-
-```ini
-[Theme]
-Current=thyx
-```
-
-The value after `Current=` must match an installed theme directory under:
-
-```bash
-/usr/share/sddm/themes
-```
-
-So this config:
-
-```ini
-[Theme]
-Current=thyx
-```
-
-points SDDM at:
-
-```bash
-/usr/share/sddm/themes/thyx
-```
-
-The theme directory must contain valid SDDM theme metadata and the QML files referenced by that metadata.
-
-## How Thyx selects itself
-
-The installer writes the selected theme into:
-
-```bash
-/etc/sddm.conf
-```
-
-If that file already exists, the installer first creates one stable backup:
-
-```bash
-/etc/sddm.conf.thyx-back
-```
-
-Then it sets:
-
-```ini
-[Theme]
-Current=thyx
-```
-
-Repeated installs reuse that same backup path. They don't create timestamped config backups.
-
-On uninstall, the previous config is restored from `/etc/sddm.conf.thyx-back` when that backup exists. If no backup exists, the uninstaller only removes `Current=thyx`.
-
-## Inspect the theme selection
-
-Show the active SDDM theme selection:
-
-```bash
-grep -nE '^\[Theme\]|^[[:space:]]*Current[[:space:]]*=' /etc/sddm.conf 2>/dev/null || true
-```
-
-Expected content after install:
-
-```ini
-[Theme]
-Current=thyx
-```
-
-Show installed SDDM themes:
-
-```bash
-ls -1 /usr/share/sddm/themes
-```
-
-The value in `Current=` must be one of those directory names.
-
-## What the installer does
-
-Run the installer from the repository root:
+Thyx was built against the stylesheet that was current when you installed it.
+An updated one does not break anything — the alternatives link still points at
+a valid bundle — but you will be on the old upstream sheet until you rebuild:
 
 ```bash
 ./scripts/install
 ```
 
-For non-interactive install:
-
-```bash
-./scripts/install --yes
-```
-
-The installer does this:
-
-```text
-find the Thyx repository
-create a log file
-validate metadata.desktop
-verify MainScript=src/Main.qml
-verify ConfigFile=theme.conf
-detect the distro
-select the matching dependency manifest
-install missing runtime packages
-verify required commands and runtime dependencies
-print an install plan
-ask for confirmation
-authenticate sudo
-remove the old fixed stage path
-remove the old fixed rollback path
-create /usr/share/sddm/themes/.thyx.stage
-copy the repo into the stage directory with rsync --delete
-strip repo-only files from the staged copy
-validate the staged theme
-move an existing /usr/share/sddm/themes/thyx to /usr/share/sddm/themes/.thyx.previous during activation
-move /usr/share/sddm/themes/.thyx.stage to /usr/share/sddm/themes/thyx
-validate the activated theme
-restore /usr/share/sddm/themes/.thyx.previous if activation fails
-remove /usr/share/sddm/themes/.thyx.previous after successful activation
-install bundled fonts
-refresh the font cache
-backup /etc/sddm.conf once when an existing config is present
-set Current=thyx in /etc/sddm.conf
-enable sddm.service
-verify the installed result
-print a safe preview command
-```
-
-The staged copy excludes:
-
-```text
-.git/
-.github/
-justfile
-.qmllint.ini
-```
-
-The installer asks for sudo because it writes into:
-
-```bash
-/usr/share/sddm/themes
-/usr/local/share/fonts
-/etc/sddm.conf
-```
-
-Those are system paths.
-
-## What "atomic install" means
-
-The installer doesn't copy files directly into the live theme directory one by one.
-
-It first creates a staging directory:
-
-```bash
-/usr/share/sddm/themes/.thyx.stage
-```
-
-Then it copies the repo into that staging directory.
-
-Then it validates the staged copy.
-
-Then it moves the staged directory into the final path:
-
-```bash
-/usr/share/sddm/themes/thyx
-```
-
-If an older install exists, it is temporarily moved into:
-
-```bash
-/usr/share/sddm/themes/.thyx.previous
-```
-
-If activation fails, that previous copy can be restored.
-
-After a successful activation, the temporary previous copy is removed.
-
-## Files Thyx touches
-
-| path                                           | owner          | purpose                                |
-| ---------------------------------------------- | -------------- | -------------------------------------- |
-| `/usr/share/sddm/themes/thyx`                  | Thyx installer | installed SDDM theme                   |
-| `/usr/share/sddm/themes/thyx/metadata.desktop` | Thyx installer | tells SDDM how to load the theme       |
-| `/usr/share/sddm/themes/thyx/theme.conf`       | Thyx installer | theme configuration                    |
-| `/usr/share/sddm/themes/thyx/src/Main.qml`     | Thyx installer | main QML UI                            |
-| `/usr/share/sddm/themes/.thyx.stage`           | Thyx installer | temporary install staging directory    |
-| `/usr/share/sddm/themes/.thyx.previous`        | Thyx installer | temporary rollback copy during install |
-| `/usr/local/share/fonts/thyx`                  | Thyx installer | bundled fonts installed for SDDM       |
-| `/etc/sddm.conf`                               | SDDM config    | selected SDDM theme                    |
-| `/etc/sddm.conf.thyx-back`                     | Thyx installer | one backup of the previous SDDM config |
-| `~/.cache/thyx/thyx-install-*.log`             | Thyx installer | install logs                           |
-| `~/.cache/thyx/thyx-uninstall-*.log`           | Thyx installer | uninstall logs                         |
-
-## Why fonts are installed system wide
-
-The login screen appears before the user desktop session starts.
-
-At that point, SDDM cannot rely on a user's desktop font setup, shell environment, user font cache, or session-specific configuration.
-
-So bundled fonts go into:
-
-```bash
-/usr/local/share/fonts/thyx
-```
-
-Then the installer refreshes the font cache:
-
-```bash
-fc-cache -f
-```
-
-That makes the fonts visible to SDDM’s greeter process.
-
-Check installed font files:
-
-```bash
-ls -la /usr/local/share/fonts/thyx
-```
-
-Check the font cache:
-
-```bash
-fc-list | grep -i "Plus Jakarta Sans" || true
-fc-list | grep -i "Inter" || true
-```
-
-The family name used in QML or `theme.conf` should match the family name reported by `fc-list`.
-installer enables SDDM
-
-## Preview safely
-
-Preview mode runs the greeter in test mode.
-
-It doesn't log out the user, doesn't restart SDDM, nor does it change the active display manager. It opens the login UI as a test window.
-
-Preview the installed theme:
-
-```bash
-QT_QPA_PLATFORM=xcb sddm-greeter-qt6 --test-mode --theme /usr/share/sddm/themes/thyx
-```
-
-If the system has only the generic greeter name:
-
-```bash
-QT_QPA_PLATFORM=xcb sddm-greeter --test-mode --theme /usr/share/sddm/themes/thyx
-```
-
-The repository also has a preview helper, you can run:
-
-```bash
-bash ./scripts/preview
-```
-
-## Uninstall Thyx
-
-Run:
-
-```bash
-./scripts/uninstall
-```
-
-For non-interactive uninstall:
-
-```bash
-./scripts/uninstall --yes
-```
-
-The uninstaller restores `/etc/sddm.conf.thyx-back` when that backup exists.
-
-If no backup exists, it only removes `Current=thyx` from `/etc/sddm.conf`.
-
-It removes:
-
-```bash
-/usr/share/sddm/themes/thyx
-/usr/share/sddm/themes/.thyx.stage
-/usr/share/sddm/themes/.thyx.previous
-/usr/local/share/fonts/thyx
-```
-
-It refreshes the font cache when fonts were removed, verifies the result, and never restarts SDDM automatically.
-
-## Recovery protocol
-
-A broken login theme is recoverable from a TTY.
-
-### 1. Switch to a TTY
-
-Try:
-
-```text
-Ctrl + Alt + F2
-Ctrl + Alt + F3
-Ctrl + Alt + F4
-```
-
-Some laptops require:
-
-```text
-Ctrl + Alt + Fn + F2
-```
-
-Log in with the normal Linux username and password.
-
-### 2. List installed SDDM themes
-
-```bash
-ls -1 /usr/share/sddm/themes
-```
-
-Pick a real theme from that list.
-
-A common fallback is:
-
-```text
-breeze
-```
-
-### 3. Restore the previous SDDM config when available
-
-If Thyx created a backup, restore it:
-
-```bash
-sudo test -f /etc/sddm.conf.thyx-back && sudo cp /etc/sddm.conf.thyx-back /etc/sddm.conf
-```
-
-### 4. Or set SDDM to a fallback theme manually
-
-Create or edit:
-
-```bash
-sudo nano /etc/sddm.conf
-```
-
-Set:
-
-```ini
-[Theme]
-Current=breeze
-```
-
-Make sure to use a theme name that exists under:
-
-```bash
-/usr/share/sddm/themes
-```
-
-### 5. Restart the display manager
-
-```bash
-sudo systemctl restart display-manager
-```
-
-If that fails:
-
-```bash
-sudo reboot
-```
-
-## Disable SDDM
-
-Disable SDDM:
-
-```bash
-sudo systemctl disable --now sddm
-```
-
-On Debian or Ubuntu, switch to another display manager:
-
-```bash
-sudo dpkg-reconfigure gdm3
-sudo systemctl enable --now gdm3
-```
-
-## Log/Debug commands
-
-Latest install log:
-
-```bash
-tail -200 "$(ls -1t ~/.cache/thyx/thyx-install-*.log | head -n 1)"
-```
-
-Latest uninstall log:
-
-```bash
-tail -200 "$(ls -1t ~/.cache/thyx/thyx-uninstall-*.log | head -n 1)"
-```
-
-Installed theme files:
-
-```bash
-find /usr/share/sddm/themes/thyx -maxdepth 3 -type f | sort
-```
-
-SDDM status:
-
-```bash
-systemctl status sddm --no-pager
-```
-
-Current boot logs for SDDM:
-
-```bash
-journalctl -u sddm -b --no-pager
-```
+`/var/lib/thyx/install.state` records which bundle yours was built from, and
+its checksum, if you want to check.
+
+**Does this theme the lock screen?**
+
+No. `Super+L` is GNOME Shell in *your* session, styled by your shell theme, not
+by GDM's. It is a different stylesheet in a different resource bundle owned by
+a different user. Same look is achievable, but it is a separate problem and
+this repo does not solve it.
