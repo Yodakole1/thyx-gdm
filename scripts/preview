@@ -110,6 +110,31 @@ _thyx_preview_fontconfig() {
 EOF
 }
 
+# GNOME Shell finds extensions through GLib's system data dirs, not through
+# GNOME_SHELL_DATADIR, so a preview that wants to show the display clock has
+# to hand it an XDG_DATA_DIRS of its own with the extension staged inside.
+# Nothing is installed: the staged copy dies with the preview.
+#
+# Prints the directory to put at the front of XDG_DATA_DIRS, or nothing when
+# the build produced no clock.
+_thyx_preview_extension() {
+  local root="${1:?}"
+  local config="${THYX_BUILD_DIR}/${THYX_EXTENSION_CONFIG_NAME}"
+  local source="${THYX_REPO_DIR}/${THYX_EXTENSION_SRC}"
+  local dest="${root}/gnome-shell/extensions/${THYX_EXTENSION_UUID}"
+
+  rm -rf -- "${root}"
+
+  [ -s "${config}" ] || return 0
+  [ -f "${source}/metadata.json" ] || return 0
+
+  mkdir -p -- "${dest}"
+  cp -f -- "${source}/metadata.json" "${source}/extension.js" "${dest}/"
+  cp -f -- "${config}" "${dest}/config.json"
+
+  printf '%s\n' "${root}"
+}
+
 main() {
   _thyx_preview_parse_args "$@"
   _thyx_preview_require
@@ -140,6 +165,14 @@ main() {
   _thyx_preview_datadir "${datadir}" "${gresource}"
   _thyx_preview_fontconfig "${fontconf}"
 
+  local extroot datadirs
+  extroot="$(_thyx_preview_extension "${THYX_BUILD_DIR}/preview-xdg-data")"
+  datadirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+  if [ -n "${extroot}" ]; then
+    datadirs="${extroot}:${datadirs}"
+    _thyx_ok "staged the display clock for this preview only"
+  fi
+
   # A private XDG_CONFIG_HOME gives the preview its own dconf database, so the
   # greeter settings can be applied without touching yours.
   rm -rf -- "${confhome}"
@@ -156,6 +189,7 @@ main() {
   GNOME_SHELL_DATADIR="${datadir}" \
   FONTCONFIG_FILE="${fontconf}" \
   XDG_CONFIG_HOME="${confhome}" \
+  XDG_DATA_DIRS="${datadirs}" \
   THYX_SETTINGS="${settings}" \
   THYX_RES="${THYX_PREVIEW_RES}" \
   THYX_OUT="${THYX_PREVIEW_OUT}" \

@@ -51,6 +51,16 @@ THYX_DCONF_PROFILE_BACKUP="${THYX_STATE_DIR}/dconf-profile-gdm.orig"
 THYX_LOGO_NAME="logo.png"
 THYX_LOGO_DST="${THYX_THEME_ROOT}/${THYX_LOGO_NAME}"
 
+# The greeter extension that draws the display clock. GNOME Shell scans the
+# system data dirs for extensions in every session mode, so this only reaches
+# the greeter because metadata.json declares session-modes ["gdm"] and the
+# uuid is listed in enabled-extensions inside GDM's dconf profile -- never the
+# logged-in user's.
+THYX_EXTENSION_UUID="thyx-clock@yodakole1.github.io"
+THYX_EXTENSION_SRC="extensions/${THYX_EXTENSION_UUID}"
+THYX_EXTENSION_DST="/usr/share/gnome-shell/extensions/${THYX_EXTENSION_UUID}"
+THYX_EXTENSION_CONFIG_NAME="thyx-clock.json"
+
 THYX_RESOURCE_PREFIX="/org/gnome/shell/theme"
 THYX_BACKGROUND_RESOURCE="${THYX_THEME_ID}-background"
 

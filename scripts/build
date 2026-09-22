@@ -177,6 +177,17 @@ _thyx_build_tokens() {
     [PanelHeight]="$(_thyx_conf_number PanelHeight "$(awk -v c="${clock_size}" 'BEGIN { h = c * 2.4; if (h < 32) h = 32; printf "%d", h }')")"
     [LogoMarginBottom]="$(_thyx_conf_number LogoBottomMargin 56)"
 
+    # The display clock the thyx-clock extension draws. Sizes are points, to
+    # sit on the same scale as the rest of the type.
+    [ClockGap]="$(_thyx_conf_number ClockGap 4)"
+    [ClockDisplaySize]="$(_thyx_conf_number ClockDisplaySize 92)"
+    [ClockDisplayWeight]="$(_thyx_conf_number ClockDisplayWeight 200)"
+    [ClockDisplayColor]="$(_thyx_conf_color ClockDisplayColor "$(_thyx_conf_color TimeTextColor "${field_text}")")"
+    [ClockDisplayTracking]="$(_thyx_conf_signed ClockDisplayTracking -4)"
+    [ClockDateSize]="$(_thyx_conf_number ClockDateSize 16)"
+    [ClockDateWeight]="$(_thyx_conf_number ClockDateWeight 400)"
+    [ClockDateColor]="$(_thyx_conf_color ClockDateColor "$(_thyx_conf_color DateTextColor "${placeholder}")")"
+
     # GDM centres the form and offers no anchor, so a left or right column is
     # made by padding the centred box out on the far side: half of that
     # padding is how far the visible form slides. See FormPosition.
@@ -272,6 +283,100 @@ EOF
   printf '%s\n' "${out}"
 }
 
+# HourFormat is written for people, so it takes more than one spelling. Both
+# the greeter's gsettings and the display clock need the normalised answer.
+_thyx_hour_format() {
+  case "$(_thyx_conf_get HourFormat "24h")" in
+    12h|12|"hh:mm AP") printf '12h\n' ;;
+    24h|24|"HH:mm") printf '24h\n' ;;
+    *) _thyx_die "HourFormat must be 12h or 24h" ;;
+  esac
+}
+
+# Renders the display clock's behaviour next to the extension that reads it.
+#
+# Returns the path on stdout, or nothing when ShowClock is off -- the same
+# contract as _thyx_build_logo, so scripts/install can decide from the build
+# alone whether the extension should be on the system at all.
+#
+# Only behaviour goes in here. Everything the clock looks like is in the
+# stylesheet, because Yaru's `* { font-weight: normal !important }` outranks
+# any inline style the extension could set.
+_thyx_build_clock_config() {
+  local out="${1:?}"
+  local form_position position offset default
+
+  rm -f -- "${out}"
+
+  form_position="$(_thyx_conf_get FormPosition center)"
+
+  # The clock exists to fill the half of the screen the form is not using. A
+  # centred form leaves no such half, so it stays off there unless it is asked
+  # for by name -- which is what keeps the presets, none of which move the
+  # form, from drawing a clock straight through their own sign-in box.
+  case "${form_position}" in
+    left|right) default=true ;;
+    *) default=false ;;
+  esac
+
+  [ "$(_thyx_conf_bool ShowClock "${default}")" = "true" ] || return 0
+
+  # Defaults to the far side from the form, which is the whole point of it.
+  case "${form_position}" in
+    left) position="$(_thyx_conf_get ClockPosition right)" ;;
+    right) position="$(_thyx_conf_get ClockPosition left)" ;;
+    *) position="$(_thyx_conf_get ClockPosition center)" ;;
+  esac
+
+  case "${position}" in
+    left|right|center) ;;
+    *) _thyx_die "ClockPosition must be left, right or center, got: ${position}" ;;
+  esac
+
+  offset="$(_thyx_conf_number ClockOffset "$(_thyx_conf_number FormOffset 0)")"
+  offset="${offset%%.*}"
+
+  # The clock is drawn above the login dialog, so an overlap hides the form
+  # rather than sitting politely behind it. Both are placed as a displacement
+  # from the middle of the screen, so comparing those two numbers is the whole
+  # check: 340px is about half the form's min-width plus half a clock.
+  local form_offset form_shift clock_shift gap
+  form_offset="$(_thyx_conf_number FormOffset 0)"
+  form_offset="${form_offset%%.*}"
+
+  case "${form_position}" in
+    left) form_shift=$(( -form_offset )) ;;
+    right) form_shift=$(( form_offset )) ;;
+    *) form_shift=0 ;;
+  esac
+
+  case "${position}" in
+    left) clock_shift=$(( -offset )) ;;
+    right) clock_shift=$(( offset )) ;;
+    *) clock_shift=0 ;;
+  esac
+
+  gap=$(( clock_shift - form_shift ))
+  [ "${gap}" -ge 0 ] || gap=$(( -gap ))
+
+  if [ "${gap}" -lt 340 ]; then
+    _thyx_warn "the clock lands ${gap}px from the sign-in form and is drawn above it. Move one of them: ClockPosition/ClockOffset, or FormPosition/FormOffset."
+  fi
+
+  {
+    printf '{\n'
+    printf '  "position": "%s",\n' "${position}"
+    printf '  "offset": %s,\n' "${offset}"
+    printf '  "hourFormat": "%s",\n' "$(_thyx_hour_format)"
+    printf '  "seconds": %s,\n' "$(_thyx_conf_bool ClockShowSeconds false)"
+    printf '  "showDate": %s,\n' "$(_thyx_conf_bool ClockShowDate true)"
+    printf '  "dateFormat": "%s"\n' "$(_thyx_conf_get ClockDateFormat '%A, %-e %B')"
+    printf '}\n'
+  } > "${out}"
+
+  printf '%s\n' "${out}"
+}
+
 # Some of Thyx's settings are not stylesheet material: GDM reads them as
 # gsettings. Emitting them as a dconf keyfile lets scripts/install drop the
 # file straight into GDM's profile and scripts/preview load the same values
@@ -279,16 +384,13 @@ EOF
 _thyx_write_greeter_settings() {
   local out="${1:?}"
   local logo="${2:-}"
+  local clock="${3:-}"
   local font font_size clock_format
 
   font="$(_thyx_conf_get Font "Plus Jakarta Sans")"
   font_size="$(_thyx_conf_number FontSize 11)"
 
-  case "$(_thyx_conf_get HourFormat "24h")" in
-    12h|12|"hh:mm AP") clock_format="12h" ;;
-    24h|24|"HH:mm") clock_format="24h" ;;
-    *) _thyx_die "HourFormat must be 12h or 24h" ;;
-  esac
+  clock_format="$(_thyx_hour_format)"
 
   {
     printf '[org/gnome/login-screen]\n'
@@ -308,6 +410,17 @@ _thyx_write_greeter_settings() {
     printf 'clock-show-weekday=%s\n' "$(_thyx_conf_bool ShowWeekday true)"
     printf 'clock-show-seconds=%s\n' "$(_thyx_conf_bool ShowSeconds false)"
     printf "color-scheme='prefer-dark'\n"
+    printf '\n'
+    # This lands in GDM's dconf profile, so it enables the extension for the
+    # greeter and for nothing else. An empty list is written deliberately
+    # rather than omitted: it has to be able to turn the clock back off.
+    printf '[org/gnome/shell]\n'
+    if [ -n "${clock}" ]; then
+      printf "enabled-extensions=['%s']\n" "${THYX_EXTENSION_UUID}"
+    else
+      printf 'enabled-extensions=@as []\n'
+    fi
+    printf 'disable-user-extensions=false\n'
   } > "${out}"
 }
 
@@ -373,7 +486,16 @@ main() {
   if [ -n "${logo}" ]; then
     [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "drew build/${THYX_LOGO_NAME}"
   else
-    [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "no wordmark (ShowLogo is off)"
+    [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "no wordmark to install"
+  fi
+
+  _thyx_say "display clock"
+  local clock
+  clock="$(_thyx_build_clock_config "${THYX_BUILD_DIR}/${THYX_EXTENSION_CONFIG_NAME}")"
+  if [ -n "${clock}" ]; then
+    [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "wrote build/${THYX_EXTENSION_CONFIG_NAME}"
+  else
+    [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "no display clock (ShowClock is off)"
   fi
 
   _thyx_say "stylesheet"
@@ -390,7 +512,7 @@ main() {
   [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "appended $(wc -l < "${overrides}") lines to gdm.css"
 
   _thyx_say "greeter settings"
-  _thyx_write_greeter_settings "${THYX_BUILD_DIR}/greeter.dconf" "${logo}"
+  _thyx_write_greeter_settings "${THYX_BUILD_DIR}/greeter.dconf" "${logo}" "${clock}"
   [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "wrote build/greeter.dconf"
 
   _thyx_say "bundle"

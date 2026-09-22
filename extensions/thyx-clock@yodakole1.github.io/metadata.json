@@ -1,0 +1,8 @@
+{
+  "uuid": "thyx-clock@yodakole1.github.io",
+  "name": "Thyx Clock",
+  "description": "A large clock for the GDM greeter, on the side the sign-in form is not. Placement and format come from theme.conf; everything it looks like comes from the Thyx stylesheet.",
+  "shell-version": ["46"],
+  "session-modes": ["gdm"],
+  "version": 1
+}

@@ -364,6 +364,59 @@ across monitor sizes. The wordmark travels with the column.
 `FormPosition="center"` ignores `FormOffset`. If the offset is wider than the
 screen can take, the form ends up flush against that edge rather than off it.
 
+### Display clock
+
+| Setting | Description | Example |
+| --- | --- | --- |
+| `ShowClock` | Draw the large clock. Defaults to on when `FormPosition` moves the form, off when it does not | `"true"` |
+| `ClockPosition` | Which side. Defaults to the opposite of `FormPosition` | `"left"`, `"center"`, `"right"` |
+| `ClockOffset` | Distance from the middle of the screen, in pixels. Defaults to `FormOffset` | `"480"` |
+| `ClockDisplaySize` | The time, in points | `"92"` |
+| `ClockDisplayWeight` | 100–900 | `"200"` |
+| `ClockDisplayTracking` | Letter-spacing in pixels; negative tightens | `"-4"` |
+| `ClockDisplayColor` | Defaults to `TimeTextColor` | `"#ffd0bf"` |
+| `ClockShowSeconds` | Seconds move, and a moving thing pulls the eye through typing a password | `"false"` |
+| `ClockShowDate` | The line under the time | `"true"` |
+| `ClockDateFormat` | A `g_date_time_format` string | `"%A, %-e %B"` |
+| `ClockDateSize`, `ClockDateWeight`, `ClockDateColor` | The date line | `"16"`, `"400"`, `"#e4b2a3"` |
+| `ClockGap` | Space between time and date, in pixels | `"4"` |
+
+Moving the form leaves half the screen empty, and GDM has nothing to put
+there: its only clock is the date menu in the top bar. So this half is filled
+by a small GNOME Shell extension, `thyx-clock@yodakole1.github.io`, which
+`scripts/install` puts in `/usr/share/gnome-shell/extensions` and enables
+through `enabled-extensions` **in GDM's dconf profile only**. Its
+`metadata.json` also declares `"session-modes": ["gdm"]`, so even if it were
+enabled elsewhere GNOME Shell would decline to load it in a real session.
+Setting `ShowClock="false"` takes it off the machine again rather than
+leaving a disabled copy behind.
+
+The split of work inside it is deliberate. The extension owns behaviour and
+placement; everything it *looks* like is in `theme.conf` and comes out in the
+same generated `gdm.css` as the rest of the theme. That is not tidiness for
+its own sake — Yaru's greeter sheet ends with
+
+```css
+* { font-weight: normal !important; }
+```
+
+and an author `!important` declaration outranks inline style, so a weight the
+extension set on itself with `set_style()` would be thrown away. Only a
+stylesheet can answer that, with a class selector and its own `!important`.
+
+Placement is a `translation_x`/`translation_y` for a related reason: the
+actor is centred on the whole desk, and the obvious correction — Clutter
+margins — does not survive, because St re-applies an `StWidget`'s margins
+from its CSS theme node on every style change. A translation is a paint-time
+transform that St never touches, and it costs no relayout.
+
+The clock is drawn above the sign-in dialog, so if the two are placed on top
+of each other the clock wins. The build measures the gap between them and
+warns when it is under 340px.
+
+`./scripts/preview` stages the extension in a throwaway `XDG_DATA_DIRS` and
+shows it without installing anything.
+
 ### Wordmark
 
 | Setting | Description | Example |

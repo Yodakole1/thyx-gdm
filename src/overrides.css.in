@@ -138,6 +138,33 @@ stage {
   color: @PlaceholderTextColor@;
 }
 
+/* --- The display clock ---------------------------------------------------
+   Drawn by the thyx-clock extension, which GDM loads only in greeter mode.
+   The extension places the actor and keeps the time; how it looks is here,
+   because Yaru's sheet closes with `* { font-weight: normal !important }` and
+   an author !important beats inline style. A class selector with its own
+   !important is the only thing that outranks it, and only a stylesheet can
+   write one. With ShowClock off, nothing is installed and these rules match
+   nothing. */
+.thyx-clock {
+  spacing: @ClockGap@px;
+}
+
+.thyx-clock-time {
+  font-family: "@Font@";
+  font-size: @ClockDisplaySize@pt;
+  font-weight: @ClockDisplayWeight@ !important;
+  color: @ClockDisplayColor@;
+  letter-spacing: @ClockDisplayTracking@px;
+}
+
+.thyx-clock-date {
+  font-family: "@Font@";
+  font-size: @ClockDateSize@pt;
+  font-weight: @ClockDateWeight@ !important;
+  color: @ClockDateColor@;
+}
+
 /* --- The person you are signing in as ------------------------------------ */
 
 .login-dialog .user-widget .user-widget-label {

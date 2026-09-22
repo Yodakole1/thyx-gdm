@@ -89,6 +89,26 @@ _thyx_conf_number() {
   printf '%s\n' "${value}"
 }
 
+# Like _thyx_conf_number, but a leading minus is allowed. Tracking is the only
+# setting that wants one: large type needs negative letter-spacing to stop the
+# digits drifting apart.
+_thyx_conf_signed() {
+  local key="${1:?}"
+  local fallback="${2:?}"
+  local value body
+
+  value="$(_thyx_conf_get "${key}" "${fallback}")"
+
+  # One leading minus is allowed; what is left has to be a plain number, so
+  # "1-2" and a bare "-" are both rejected.
+  body="${value#-}"
+  case "${body}" in
+    ''|*[!0-9.]*) _thyx_die "${key} must be a number, got: ${value}" ;;
+  esac
+
+  printf '%s\n' "${value}"
+}
+
 _thyx_conf_bool() {
   local key="${1:?}"
   local fallback="${2:?}"

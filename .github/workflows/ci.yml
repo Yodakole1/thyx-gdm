@@ -39,6 +39,60 @@ jobs:
       - name: compile
         run: python3 -m py_compile scripts/lib/_preview.py
 
+  extension:
+    name: greeter extension
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      # The greeter extension is loaded by GNOME Shell, which is not here to
+      # complain, so the two things that can be checked without it are: the
+      # metadata GNOME Shell validates on load, and that the module parses.
+      - name: metadata
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+
+          root = 'extensions'
+          uuids = os.listdir(root)
+          if not uuids:
+              sys.exit('no extension found under extensions/')
+
+          for uuid in uuids:
+              with open(os.path.join(root, uuid, 'metadata.json')) as f:
+                  meta = json.load(f)
+
+              # GNOME Shell refuses to load an extension whose metadata is
+              # missing any of these, or whose uuid disagrees with its folder.
+              for key in ('uuid', 'name', 'description', 'shell-version'):
+                  if not meta.get(key):
+                      sys.exit(f'{uuid}: missing "{key}"')
+
+              if meta['uuid'] != uuid:
+                  sys.exit(f'{uuid}: uuid is "{meta["uuid"]}"')
+
+              if not isinstance(meta['shell-version'], list) or \
+                 not all(isinstance(v, str) for v in meta['shell-version']):
+                  sys.exit(f'{uuid}: shell-version must be a list of strings')
+
+              # Without this it loads in a logged-in session too.
+              if meta.get('session-modes') != ['gdm']:
+                  sys.exit(f'{uuid}: session-modes must be exactly ["gdm"]')
+
+              print(f'{uuid}: ok')
+          PY
+
+      - name: the module must parse
+        run: |
+          set -euo pipefail
+          for js in extensions/*/extension.js; do
+            cp "${js}" "/tmp/$(basename "$(dirname "${js}")").mjs"
+          done
+          for mjs in /tmp/*.mjs; do
+            echo "==> ${mjs}"
+            node --check "${mjs}"
+          done
+
   build:
     name: build every preset
     runs-on: ubuntu-24.04

@@ -96,6 +96,9 @@ _thyx_install_plan() {
   fi
   _thyx_log "  fonts      ${THYX_FONTS_DST}"
   _thyx_log "  wordmark   ${THYX_LOGO_DST}"
+  if [ -s "${THYX_BUILD_DIR}/${THYX_EXTENSION_CONFIG_NAME}" ]; then
+    _thyx_log "  clock      ${THYX_EXTENSION_DST}"
+  fi
   _thyx_log "  settings   ${THYX_DCONF_FILE}"
   _thyx_log "             ${THYX_DCONF_PROFILE_FILE} (only if the packaged profile reads no system db)"
   _thyx_log "  state      ${THYX_STATE_FILE}"
@@ -171,6 +174,37 @@ _thyx_install_logo() {
   _thyx_run mkdir -p -- "${THYX_THEME_ROOT}"
   _thyx_run install -m 0644 -- "${logo}" "${THYX_LOGO_DST}"
   _thyx_ok "installed ${THYX_LOGO_DST}"
+}
+
+# The greeter extension that draws the display clock.
+#
+# Installed only when the build produced a config for it, and removed when it
+# did not, so turning ShowClock off in theme.conf takes the extension off the
+# machine rather than leaving a disabled copy behind. Enabling it is a
+# separate matter: that is the enabled-extensions key in GDM's dconf profile,
+# which _thyx_install_settings writes from the same build.
+_thyx_install_extension() {
+  local config="${THYX_BUILD_DIR}/${THYX_EXTENSION_CONFIG_NAME}"
+  local source="${THYX_REPO_DIR}/${THYX_EXTENSION_SRC}"
+
+  if [ ! -s "${config}" ]; then
+    _thyx_remove_one "${THYX_EXTENSION_DST}"
+    _thyx_ok "no display clock to install"
+    return 0
+  fi
+
+  [ -f "${source}/metadata.json" ] ||
+    _thyx_die "the extension is missing from the repo: ${source}"
+
+  # Replaced whole rather than merged: a file left over from an older version
+  # would be loaded right alongside the new ones.
+  _thyx_remove_one "${THYX_EXTENSION_DST}"
+  _thyx_run mkdir -p -- "${THYX_EXTENSION_DST}"
+  _thyx_run install -m 0644 -t "${THYX_EXTENSION_DST}" -- \
+    "${source}/metadata.json" "${source}/extension.js"
+  _thyx_run install -m 0644 -- "${config}" "${THYX_EXTENSION_DST}/config.json"
+
+  _thyx_ok "installed ${THYX_EXTENSION_DST}"
 }
 
 _thyx_install_theme() {
@@ -425,6 +459,9 @@ main() {
 
   _thyx_step "wordmark"
   _thyx_install_logo
+
+  _thyx_step "display clock"
+  _thyx_install_extension
 
   _thyx_step "settings"
   _thyx_install_settings

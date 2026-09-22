@@ -54,6 +54,9 @@ _thyx_uninstall_plan() {
     _thyx_log "             restore $(_thyx_target_file) from ${THYX_GDM_BACKUP}"
   fi
   _thyx_log "  remove     ${THYX_THEME_ROOT}"
+  if [ -d "${THYX_EXTENSION_DST}" ]; then
+    _thyx_log "  remove     ${THYX_EXTENSION_DST}"
+  fi
   _thyx_log "  remove     ${THYX_DCONF_FILE}"
   case "$(_thyx_recorded_profile_outcome)" in
     created) _thyx_log "  remove     ${THYX_DCONF_PROFILE_FILE}" ;;
@@ -146,6 +149,7 @@ main() {
   _thyx_dconf_profile_restore "$(_thyx_recorded_profile_outcome)"
 
   _thyx_remove_one "${THYX_THEME_ROOT}"
+  _thyx_remove_one "${THYX_EXTENSION_DST}"
   _thyx_remove_one "${THYX_DCONF_FILE}"
   _thyx_remove_one "${THYX_STATE_DIR}"
 
