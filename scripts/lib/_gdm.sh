@@ -308,3 +308,143 @@ _thyx_active_gresource() {
   [ -e "${target}" ] || return 1
   readlink -f -- "${target}"
 }
+
+# --- greeter gsettings -----------------------------------------------------
+#
+# Writing /etc/dconf/db/gdm.d/95-thyx only does something if the greeter's
+# dconf profile names a system database. Ubuntu's does not, so Thyx ensures
+# one the same way gdm-config does: through /etc/dconf/profile/gdm, an
+# admin-owned override of the packaged profile.
+#
+# Three outcomes, recorded in the install state so uninstall can undo exactly
+# what was done and nothing more:
+#
+#   none      the profile already had a system-db; nothing was written
+#   created   Thyx wrote the profile; uninstall deletes it
+#   edited    something else owned the profile; Thyx added one line to it and
+#             kept the original, which uninstall puts back
+
+_thyx_dconf_profile_has_system_db() {
+  local file="${1:?}"
+
+  [ -f "${file}" ] || return 1
+  grep -qE "^[[:space:]]*system-db:${THYX_DCONF_SYSTEM_DB}[[:space:]]*$" "${file}"
+}
+
+# The profile the greeter resolves today: the admin copy if there is one, the
+# packaged one otherwise.
+_thyx_dconf_profile_effective() {
+  if [ -f "${THYX_DCONF_PROFILE_FILE}" ]; then
+    printf '%s\n' "${THYX_DCONF_PROFILE_FILE}"
+  elif [ -f "${THYX_DCONF_PROFILE_SRC}" ]; then
+    printf '%s\n' "${THYX_DCONF_PROFILE_SRC}"
+  fi
+}
+
+# Copies a profile with `system-db:gdm` inserted directly below the user-db
+# line, which is where dconf wants it: the first line must stay writable, and
+# a system-db must outrank the distro's file-db to be able to override it.
+_thyx_dconf_profile_render() {
+  local src="${1:-}"
+
+  printf '# This profile is managed by thyx (%s).\n' "${THYX_THEME_ID}"
+  printf '# It exists because the packaged profile lists no system database,\n'
+  printf '# which leaves /etc/dconf/db/%s.d unread. Removing thyx restores it.\n' "${THYX_DCONF_SYSTEM_DB}"
+
+  if [ -n "${src}" ] && [ -f "${src}" ]; then
+    awk -v db="system-db:${THYX_DCONF_SYSTEM_DB}" '
+      /^[[:space:]]*#/ { print; next }
+      { print }
+      !done && /^[[:space:]]*(user-db|service-db):/ { print db; done = 1 }
+      END { if (!done) print db }
+    ' "${src}"
+  else
+    printf 'user-db:user\n'
+    printf 'system-db:%s\n' "${THYX_DCONF_SYSTEM_DB}"
+  fi
+}
+
+_thyx_dconf_profile_is_ours() {
+  [ -f "${THYX_DCONF_PROFILE_FILE}" ] &&
+    grep -q "^# This profile is managed by thyx" "${THYX_DCONF_PROFILE_FILE}"
+}
+
+# Returns the outcome on stdout: none, created or edited.
+#
+# Re-rendered from the packaged profile on every install, not just the first,
+# so that if a gdm3 upgrade ever changes its own profile our shadow copy picks
+# the change up instead of pinning the greeter to an old database list.
+_thyx_dconf_profile_ensure() {
+  local outcome tmp
+
+  if _thyx_dconf_profile_is_ours; then
+    outcome="created"
+    tmp="$(mktemp)"
+    _thyx_dconf_profile_render "${THYX_DCONF_PROFILE_SRC}" > "${tmp}"
+  elif [ -f "${THYX_DCONF_PROFILE_FILE}" ]; then
+    # Somebody else owns this file -- gdm-config writes one too. Leave it be
+    # if it already reaches our database; otherwise add the one line it needs
+    # and keep the original for uninstall.
+    if _thyx_dconf_profile_has_system_db "${THYX_DCONF_PROFILE_FILE}"; then
+      printf 'none\n'
+      return 0
+    fi
+    outcome="edited"
+    tmp="$(mktemp)"
+    _thyx_run mkdir -p -- "${THYX_STATE_DIR}"
+    _thyx_run cp -a -- "${THYX_DCONF_PROFILE_FILE}" "${THYX_DCONF_PROFILE_BACKUP}"
+    _thyx_dconf_profile_render "${THYX_DCONF_PROFILE_FILE}" > "${tmp}"
+  elif _thyx_dconf_profile_has_system_db "${THYX_DCONF_PROFILE_SRC}"; then
+    # A distro whose own profile already reads /etc/dconf/db/gdm.d. Nothing
+    # to shadow, and shadowing it anyway would only add a file to go stale.
+    printf 'none\n'
+    return 0
+  else
+    outcome="created"
+    tmp="$(mktemp)"
+    _thyx_dconf_profile_render "${THYX_DCONF_PROFILE_SRC}" > "${tmp}"
+  fi
+
+  if [ -f "${THYX_DCONF_PROFILE_FILE}" ] &&
+     cmp -s "${tmp}" "${THYX_DCONF_PROFILE_FILE}"; then
+    rm -f -- "${tmp}"
+    printf '%s\n' "${outcome}"
+    return 0
+  fi
+
+  _thyx_run mkdir -p -- "${THYX_DCONF_PROFILE_DIR}"
+  _thyx_run install -m 0644 -- "${tmp}" "${THYX_DCONF_PROFILE_FILE}"
+  rm -f -- "${tmp}"
+
+  printf '%s\n' "${outcome}"
+}
+
+# Puts back whatever was there before, guided by the recorded outcome.
+_thyx_dconf_profile_restore() {
+  local outcome="${1:-none}"
+
+  case "${outcome}" in
+    created)
+      _thyx_remove_one "${THYX_DCONF_PROFILE_FILE}"
+      ;;
+    edited)
+      if [ -f "${THYX_DCONF_PROFILE_BACKUP}" ]; then
+        _thyx_run install -m 0644 -- \
+          "${THYX_DCONF_PROFILE_BACKUP}" "${THYX_DCONF_PROFILE_FILE}"
+      else
+        _thyx_warn "no profile backup at ${THYX_DCONF_PROFILE_BACKUP}; leaving ${THYX_DCONF_PROFILE_FILE} alone"
+      fi
+      ;;
+    *)
+      ;;
+  esac
+}
+
+# Reads a key back the way the greeter will read it, which is the only proof
+# that the keyfile and the profile actually line up.
+_thyx_dconf_greeter_read() {
+  local key="${1:?}"
+
+  command -v dconf >/dev/null 2>&1 || return 1
+  DCONF_PROFILE="${THYX_DCONF_SYSTEM_DB}" dconf read "${key}" 2>/dev/null
+}

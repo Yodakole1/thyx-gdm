@@ -59,6 +59,21 @@ Fixed along the way, in the design system these presets came from:
   English day and month names. Date and time now follow your locale, through
   the settings GDM actually reads.
 
+And, found on Ubuntu itself:
+
+- **Greeter settings never reached the greeter.** A keyfile in
+  `/etc/dconf/db/gdm.d` is only read if the greeter's dconf profile names a
+  system database, and Ubuntu's ships without one — it lists `user-db:user`
+  and a `file-db` and nothing else. Every font, clock and logo setting Thyx
+  wrote was silently inert. Thyx now ensures the profile, the same way
+  Ubuntu's own `gdm-config` does, and reads a key back afterwards to prove it
+  landed.
+- **The vendor logo hung off the bottom of the screen.** GDM allocates the
+  logo bin at `screen_bottom - bin_height` and does not clip its contents, so
+  pinning the bin to a fixed height shorter than the image left the rest of
+  the image below the edge of the display. The bin is unconstrained now, and
+  a margin holds the mark clear.
+
 ## Requirements
 
 - GNOME Shell with GDM — developed against **GNOME Shell 46 / Ubuntu 24.04**
@@ -252,6 +267,20 @@ screen, so Thyx grows it into the greeter's timestamp.
 | `FieldOpacity` | How much of the field colour shows, `0.0` – `1.0` | `"0.25"` |
 | `FormOpacity` | Panel behind the form, `0.0` – `1.0` | `"0.00"` |
 
+### Session and login-options pickers
+
+| Setting | Description | Example |
+| --- | --- | --- |
+| `MenuButtonSize` | Diameter of the two corner buttons, in pixels | `"44"` |
+| `MenuButtonIconSize` | The gear inside them | `"20"` |
+| `MenuButtonBorderWidth` | Their outline | `"1"` |
+
+The bottom-right corner holds the session picker — the only way to choose
+Wayland or Xorg before signing in — and the login-options picker. GDM labels
+neither; both are a bare gear on a flat background, easy to read as
+decoration. Thyx outlines them and gives them the accent on hover, and the
+menu that opens gets a visible heading.
+
 ### Colours
 
 Every colour is `#rrggbb`. Anything else stops the build with the name of the
@@ -281,11 +310,48 @@ setting that was wrong.
 You set one field colour and one opacity; the resting, hover and focus states
 are derived from them so they stay in step.
 
+### Where the form sits
+
+| Setting | Description | Example |
+| --- | --- | --- |
+| `FormPosition` | Which side the sign-in column sits on | `"left"`, `"center"`, `"right"` |
+| `FormOffset` | How far from the middle of the screen, in pixels | `"480"` |
+
+GDM centres the form on the primary monitor and offers no way to anchor it,
+and St — GNOME Shell's CSS engine — has no percentage lengths to lay a column
+out with. What it does honour is padding, and a centred box grows both ways
+from its middle: padding one flank by `2n` slides everything visible `n`
+pixels the other way. So `FormOffset` is measured from the centre of the
+screen rather than from its edge, which is the one definition that holds up
+across monitor sizes. The wordmark travels with the column.
+
+`FormPosition="center"` ignores `FormOffset`. If the offset is wider than the
+screen can take, the form ends up flush against that edge rather than off it.
+
+### Wordmark
+
+| Setting | Description | Example |
+| --- | --- | --- |
+| `ShowLogo` | Draw a mark at the foot of the screen | `"true"`, `"false"` |
+| `LogoText` | What it says | `"ubuntu"` |
+| `LogoImage` | An image to use instead of drawing text | `"backgrounds/mark.png"` |
+| `LogoSize` | Cap height, in pixels | `"34"` |
+| `LogoWeight` | Weight of the lettering | `"700"` |
+| `LogoTracking` | Letter spacing, in pixels | `"-1"` |
+| `LogoColor` | Colour of the lettering | `"#f3c4aa"` |
+| `LogoOpacity` | `0.0` – `1.0` | `"0.75"` |
+| `LogoBottomMargin` | Clearance from the bottom edge, in pixels | `"56"` |
+
+GDM's logo setting takes a path to an image and blits the file at its own
+pixel size, which is why the stock Ubuntu mark can never match a theme: its
+lettering is baked into `/usr/share/plymouth/ubuntu-logo.png`. Thyx draws its
+own from `LogoText` at build time, in the same family, weight and colour as
+the rest of the greeter, and installs it beside the bundle.
+
 ### Greeter behaviour
 
 | Setting | Description | Options |
 | --- | --- | --- |
-| `ShowLogo` | The vendor logo above the form | `"true"`, `"false"` |
 | `DisableUserList` | Ask for a username instead of listing accounts | `"true"`, `"false"` |
 
 `DisableUserList="true"` is worth considering if you would rather not

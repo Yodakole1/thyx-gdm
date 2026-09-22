@@ -55,6 +55,11 @@ _thyx_uninstall_plan() {
   fi
   _thyx_log "  remove     ${THYX_THEME_ROOT}"
   _thyx_log "  remove     ${THYX_DCONF_FILE}"
+  case "$(_thyx_recorded_profile_outcome)" in
+    created) _thyx_log "  remove     ${THYX_DCONF_PROFILE_FILE}" ;;
+    edited)  _thyx_log "  restore    ${THYX_DCONF_PROFILE_FILE}" ;;
+    *)       _thyx_log "  keep       ${THYX_DCONF_PROFILE_FILE} (not written by thyx)" ;;
+  esac
   _thyx_log "  remove     ${THYX_STATE_DIR}"
   if [ "${THYX_KEEP_FONTS}" -eq 1 ]; then
     _thyx_log "  keep       ${THYX_FONTS_DST}"
@@ -66,6 +71,25 @@ _thyx_uninstall_plan() {
   _thyx_log "  SDDM is not involved and nothing restarts: the distro greeter"
   _thyx_log "  comes back the next time you log out or reboot."
   _thyx_log ""
+}
+
+# What the install recorded about /etc/dconf/profile/gdm: none, created or
+# edited. Falls back to inspecting the file, for an install that predates the
+# state file carrying this.
+_thyx_recorded_profile_outcome() {
+  local recorded=""
+
+  if [ -f "${THYX_STATE_FILE}" ]; then
+    recorded="$(awk -F= '/^dconf_profile=/ { print $2 }' "${THYX_STATE_FILE}")"
+  fi
+
+  if [ -n "${recorded}" ]; then
+    printf '%s\n' "${recorded}"
+  elif _thyx_dconf_profile_is_ours; then
+    printf 'created\n'
+  else
+    printf 'none\n'
+  fi
 }
 
 _thyx_uninstall_verify() {
@@ -115,6 +139,10 @@ main() {
   _thyx_ok "greeter theme released"
 
   _thyx_step "remove"
+
+  # Before the state directory goes, since that is where the backup lives.
+  _thyx_dconf_profile_restore "$(_thyx_recorded_profile_outcome)"
+
   _thyx_remove_one "${THYX_THEME_ROOT}"
   _thyx_remove_one "${THYX_DCONF_FILE}"
   _thyx_remove_one "${THYX_STATE_DIR}"

@@ -73,7 +73,7 @@ _thyx_build_tokens() {
   local bg_color field_bg_color field_text placeholder
   local accent accent_text accent_hover
   local chrome_fg chrome_hover_fg
-  local show_logo
+  local show_logo form_position form_offset form_pad_left form_pad_right
 
   font="$(_thyx_conf_get Font "Plus Jakarta Sans")"
   font_size="$(_thyx_conf_number FontSize 11)"
@@ -94,6 +94,21 @@ _thyx_build_tokens() {
   chrome_fg="$(_thyx_conf_color SystemButtonsIconsColor "#f3c4aa")"
   chrome_hover_fg="$(_thyx_conf_color HoverSystemButtonsIconsColor "${accent}")"
   show_logo="$(_thyx_conf_bool ShowLogo false)"
+
+  form_position="$(_thyx_conf_get FormPosition center)"
+  case "${form_position}" in
+    left|right|center) ;;
+    *) _thyx_die "FormPosition must be left, right or center, got: ${form_position}" ;;
+  esac
+  form_offset="$(_thyx_conf_number FormOffset 0)"
+  form_offset="${form_offset%%.*}"
+
+  form_pad_left=0
+  form_pad_right=0
+  case "${form_position}" in
+    left) form_pad_right="$(( form_offset * 2 ))" ;;
+    right) form_pad_left="$(( form_offset * 2 ))" ;;
+  esac
 
   THYX_TOKENS=(
     [Font]="${font}"
@@ -155,9 +170,31 @@ _thyx_build_tokens() {
     [UserNameSize]="$(awk -v f="${font_size}" 'BEGIN { printf "%d", f * 1.5 }')"
     [StatusIconSize]="$(_thyx_conf_number StatusIconSize 16)"
     [PanelHeight]="$(_thyx_conf_number PanelHeight "$(awk -v c="${clock_size}" 'BEGIN { h = c * 2.4; if (h < 32) h = 32; printf "%d", h }')")"
-    [LogoHeight]="$([ "${show_logo}" = "true" ] && printf '48' || printf '1')"
-    [LogoPadding]="$([ "${show_logo}" = "true" ] && printf '24' || printf '0')"
-    [LogoOpacity]="$([ "${show_logo}" = "true" ] && printf '255' || printf '0')"
+    [LogoMarginBottom]="$(_thyx_conf_number LogoBottomMargin 56)"
+
+    # GDM centres the form and offers no anchor, so a left or right column is
+    # made by padding the centred box out on the far side: half of that
+    # padding is how far the visible form slides. See FormPosition.
+    [FormPadLeft]="${form_pad_left}"
+    [FormPadRight]="${form_pad_right}"
+
+    # The user list already carries FormPadding on every side, so its shift
+    # has to be folded into that rather than replace it.
+    [UserBoxPadLeft]="$(( $(_thyx_conf_number FormPadding 24) + ${form_pad_left} ))"
+    [UserBoxPadRight]="$(( $(_thyx_conf_number FormPadding 24) + ${form_pad_right} ))"
+
+    [MenuButtonSize]="$(_thyx_conf_number MenuButtonSize 44)"
+    [MenuButtonRadius]="$(( $(_thyx_conf_number MenuButtonSize 44) / 2 ))"
+    [MenuButtonIconSize]="$(_thyx_conf_number MenuButtonIconSize 20)"
+    [MenuButtonBorderWidth]="$(_thyx_conf_number MenuButtonBorderWidth 1)"
+
+    # Accent washes, for rings and glows that should read as the same colour
+    # family as the primary action without competing with it.
+    [AccentSoft]="$(_thyx_rgba "${accent}" 0.14)"
+    [AccentGlow]="$(_thyx_rgba "${accent}" 0.30)"
+    [AccentEdge]="$(_thyx_rgba "${accent}" 0.55)"
+    [FieldGradientTop]="$(_thyx_rgba "${field_bg_color}" "$(_thyx_alpha_scale "${field_opacity}" 70)")"
+    [FieldGradientBottom]="$(_thyx_rgba "${field_bg_color}" "$(_thyx_alpha_scale "${field_opacity}" 145)")"
   )
 
   # Inside an array literal only the last substitution sets $?, so a rejected
@@ -169,12 +206,74 @@ _thyx_build_tokens() {
   done
 }
 
+# Draws the wordmark, or copies the image that stands in for it.
+#
+# Returns the path on stdout, or nothing when the greeter should show no mark
+# at all. The file lands in build/ and scripts/install copies it next to the
+# bundle, because GDM's logo key wants a filesystem path: a resource:// URI
+# inside the theme would not resolve.
+_thyx_build_logo() {
+  local out="${1:?}"
+  local text image
+
+  rm -f -- "${out}"
+
+  [ "$(_thyx_conf_bool ShowLogo false)" = "true" ] || return 0
+
+  image="$(_thyx_conf_get LogoImage "")"
+  if [ -n "${image}" ]; then
+    local source="${THYX_REPO_DIR}/${image}"
+    [ -f "${source}" ] || source="${image}"
+    [ -f "${source}" ] || _thyx_die "LogoImage not found: ${image}"
+    cp -f -- "${source}" "${out}"
+    printf '%s\n' "${out}"
+    return 0
+  fi
+
+  text="$(_thyx_conf_get LogoText "")"
+  if [ -z "${text}" ]; then
+    _thyx_warn "ShowLogo is true but LogoText and LogoImage are both empty; no mark will be drawn"
+    return 0
+  fi
+
+  if ! python3 -c 'import gi; gi.require_version("PangoCairo", "1.0"); from gi.repository import PangoCairo; import cairo' >/dev/null 2>&1; then
+    _thyx_warn "python3-gi with PangoCairo is missing; skipping the wordmark (install python3-gi and gir1.2-pango-1.0)"
+    return 0
+  fi
+
+  # The bundled face may not be installed system wide yet, so point
+  # fontconfig at the repo's copy for the length of this call.
+  local fontconf="${THYX_BUILD_DIR}/logo-fonts.conf"
+  cat > "${fontconf}" <<EOF
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+  <dir>${THYX_REPO_DIR}/fonts</dir>
+</fontconfig>
+EOF
+
+  FONTCONFIG_FILE="${fontconf}" python3 "${THYX_SCRIPT_DIR}/lib/_logo.py" "${out}" \
+    --text "${text}" \
+    --font "$(_thyx_conf_get Font "Plus Jakarta Sans")" \
+    --size "$(_thyx_conf_number LogoSize 34)" \
+    --weight "$(_thyx_conf_number LogoWeight 700)" \
+    --tracking "$(_thyx_conf_get LogoTracking 0)" \
+    --color "$(_thyx_conf_color LogoColor "$(_thyx_conf_color SystemButtonsIconsColor "#ffffff")")" \
+    --opacity "$(_thyx_conf_number LogoOpacity 1)" \
+    > /dev/null || _thyx_die "could not draw the wordmark"
+
+  [ -s "${out}" ] || _thyx_die "wordmark render produced an empty file"
+  printf '%s\n' "${out}"
+}
+
 # Some of Thyx's settings are not stylesheet material: GDM reads them as
 # gsettings. Emitting them as a dconf keyfile lets scripts/install drop the
 # file straight into GDM's profile and scripts/preview load the same values
 # into a throwaway database, so a preview and an install agree.
 _thyx_write_greeter_settings() {
   local out="${1:?}"
+  local logo="${2:-}"
   local font font_size clock_format
 
   font="$(_thyx_conf_get Font "Plus Jakarta Sans")"
@@ -188,8 +287,10 @@ _thyx_write_greeter_settings() {
 
   {
     printf '[org/gnome/login-screen]\n'
-    if [ "$(_thyx_conf_bool ShowLogo false)" = "true" ]; then
-      printf "logo='/usr/share/plymouth/ubuntu-logo.png'\n"
+    # Empty blanks the distro's own mark; otherwise point at where
+    # scripts/install will have put ours by the time the greeter reads this.
+    if [ -n "${logo}" ]; then
+      printf "logo='%s'\n" "${THYX_LOGO_DST}"
     else
       printf "logo=''\n"
     fi
@@ -261,6 +362,15 @@ main() {
     _thyx_warn "no Background set: the greeter falls back to BackgroundColor"
   fi
 
+  _thyx_say "wordmark"
+  local logo
+  logo="$(_thyx_build_logo "${THYX_BUILD_DIR}/${THYX_LOGO_NAME}")"
+  if [ -n "${logo}" ]; then
+    [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "drew build/${THYX_LOGO_NAME}"
+  else
+    [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "no wordmark (ShowLogo is off)"
+  fi
+
   _thyx_say "stylesheet"
   _thyx_build_tokens
   THYX_TOKENS[BackgroundImage]="${background_rule}"
@@ -275,7 +385,7 @@ main() {
   [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "appended $(wc -l < "${overrides}") lines to gdm.css"
 
   _thyx_say "greeter settings"
-  _thyx_write_greeter_settings "${THYX_BUILD_DIR}/greeter.dconf"
+  _thyx_write_greeter_settings "${THYX_BUILD_DIR}/greeter.dconf" "${logo}"
   [ "${THYX_QUIET}" -eq 1 ] || _thyx_ok "wrote build/greeter.dconf"
 
   _thyx_say "bundle"

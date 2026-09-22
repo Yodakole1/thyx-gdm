@@ -28,6 +28,29 @@ THYX_FONTS_DST="/usr/local/share/fonts/${THYX_THEME_ID}"
 THYX_DCONF_DIR="/etc/dconf/db/gdm.d"
 THYX_DCONF_FILE="${THYX_DCONF_DIR}/95-${THYX_THEME_ID}"
 
+# A keyfile in /etc/dconf/db/gdm.d is only read if the greeter's dconf profile
+# actually lists a system-db. Ubuntu's shipped profile does not:
+#
+#   user-db:user
+#   file-db:/var/lib/gdm3/greeter-dconf-defaults
+#
+# so on a stock Ubuntu every greeter setting Thyx writes is silently ignored.
+# The fix is the one Ubuntu's own gdm-config uses for the same problem: an
+# admin-owned profile at /etc/dconf/profile/gdm, which shadows the packaged
+# one at /usr/share/dconf/profile/gdm. No packaged file is edited, and dpkg
+# ships nothing at this path, so a gdm3 upgrade cannot clobber it.
+THYX_DCONF_PROFILE_DIR="/etc/dconf/profile"
+THYX_DCONF_PROFILE_FILE="${THYX_DCONF_PROFILE_DIR}/gdm"
+THYX_DCONF_PROFILE_SRC="/usr/share/dconf/profile/gdm"
+THYX_DCONF_SYSTEM_DB="gdm"
+THYX_DCONF_PROFILE_BACKUP="${THYX_STATE_DIR}/dconf-profile-gdm.orig"
+
+# The wordmark drawn at the foot of the greeter. GDM's logo gsetting takes a
+# filesystem path, not a resource URI, so this one lives beside the bundle
+# rather than inside it.
+THYX_LOGO_NAME="logo.png"
+THYX_LOGO_DST="${THYX_THEME_ROOT}/${THYX_LOGO_NAME}"
+
 THYX_RESOURCE_PREFIX="/org/gnome/shell/theme"
 THYX_BACKGROUND_RESOURCE="${THYX_THEME_ID}-background"
 

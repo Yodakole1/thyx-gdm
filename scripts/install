@@ -89,7 +89,9 @@ _thyx_install_plan() {
     _thyx_log "             $(_thyx_target_file) replaced, backup at ${THYX_GDM_BACKUP}"
   fi
   _thyx_log "  fonts      ${THYX_FONTS_DST}"
+  _thyx_log "  wordmark   ${THYX_LOGO_DST}"
   _thyx_log "  settings   ${THYX_DCONF_FILE}"
+  _thyx_log "             ${THYX_DCONF_PROFILE_FILE} (only if the packaged profile reads no system db)"
   _thyx_log "  state      ${THYX_STATE_FILE}"
   _thyx_hr
   _thyx_log ""
@@ -120,6 +122,8 @@ _thyx_install_fonts() {
   _thyx_ok "installed ${found} font file(s) to ${THYX_FONTS_DST}"
 }
 
+THYX_PROFILE_OUTCOME="none"
+
 _thyx_install_settings() {
   local settings="${THYX_BUILD_DIR}/greeter.dconf"
 
@@ -132,10 +136,35 @@ _thyx_install_settings() {
   _thyx_run mkdir -p -- "${THYX_DCONF_DIR}"
   _thyx_run install -m 0644 -- "${settings}" "${THYX_DCONF_FILE}"
 
+  # A keyfile in gdm.d is inert unless the greeter's profile names a system
+  # database, and Ubuntu's does not. Nothing packaged is edited to fix that;
+  # see _thyx_dconf_profile_ensure.
+  THYX_PROFILE_OUTCOME="$(_thyx_dconf_profile_ensure)"
+  case "${THYX_PROFILE_OUTCOME}" in
+    created) _thyx_ok "wrote ${THYX_DCONF_PROFILE_FILE} (the packaged profile reads no system database)" ;;
+    edited)  _thyx_ok "added system-db:${THYX_DCONF_SYSTEM_DB} to ${THYX_DCONF_PROFILE_FILE}" ;;
+    *)       _thyx_ok "greeter profile already reads ${THYX_DCONF_DIR}" ;;
+  esac
+
   # GDM reads a compiled database, not the keyfile.
   _thyx_run dconf update || _thyx_warn "dconf update failed; greeter settings may not apply"
 
   _thyx_ok "greeter settings at ${THYX_DCONF_FILE}"
+}
+
+# The wordmark cannot live in the gresource: GDM's logo key takes a path.
+_thyx_install_logo() {
+  local logo="${THYX_BUILD_DIR}/${THYX_LOGO_NAME}"
+
+  if [ ! -s "${logo}" ]; then
+    _thyx_remove_one "${THYX_LOGO_DST}"
+    _thyx_ok "no wordmark to install"
+    return 0
+  fi
+
+  _thyx_run mkdir -p -- "${THYX_THEME_ROOT}"
+  _thyx_run install -m 0644 -- "${logo}" "${THYX_LOGO_DST}"
+  _thyx_ok "installed ${THYX_LOGO_DST}"
 }
 
 _thyx_install_theme() {
@@ -155,8 +184,9 @@ _thyx_install_state() {
 
   _thyx_run mkdir -p -- "${THYX_STATE_DIR}"
   {
-    printf 'version=2\n'
+    printf 'version=3\n'
     printf 'method=%s\n' "${method}"
+    printf 'dconf_profile=%s\n' "${THYX_PROFILE_OUTCOME}"
     printf 'gresource=%s\n' "${THYX_GRESOURCE_DST}"
     printf 'installed=%s\n' "$(date -Iseconds)"
     cat "${THYX_BUILD_DIR}/build.info"
@@ -179,6 +209,22 @@ _thyx_install_verify() {
   fi
 
   _thyx_ok "greeter theme resolves to ${active}"
+
+  # The settings half of the install has its own failure mode, and it is a
+  # quiet one: a keyfile that no profile reaches looks installed and does
+  # nothing. Read a key back the way the greeter will.
+  if command -v dconf >/dev/null 2>&1 && [ -f "${THYX_DCONF_FILE}" ]; then
+    local seen expected
+    expected="$(awk -F= '/^logo=/ { print $2 }' "${THYX_DCONF_FILE}")"
+    seen="$(_thyx_dconf_greeter_read /org/gnome/login-screen/logo || true)"
+
+    if [ "${seen}" = "${expected}" ]; then
+      _thyx_ok "greeter settings read back through DCONF_PROFILE=${THYX_DCONF_SYSTEM_DB}"
+    else
+      _thyx_warn "greeter reads logo=${seen:-<unset>}, expected ${expected}"
+      _thyx_warn "the clock, font and wordmark settings may not apply; the theme itself will"
+    fi
+  fi
 }
 
 main() {
@@ -220,6 +266,9 @@ main() {
 
   _thyx_step "activate"
   _thyx_activate "${THYX_GRESOURCE_DST}"
+
+  _thyx_step "wordmark"
+  _thyx_install_logo
 
   _thyx_step "settings"
   _thyx_install_settings

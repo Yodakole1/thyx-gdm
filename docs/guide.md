@@ -183,12 +183,52 @@ at the login screen, with the uninstaller one TTY away.
 | --- | --- |
 | `/usr/share/gnome-shell/theme/thyx/gnome-shell-theme.gresource` | the theme |
 | `/usr/share/gnome-shell/gdm-theme.gresource` | the alternatives link, now pointing at Thyx |
+| `/usr/share/gnome-shell/theme/thyx/logo.png` | the wordmark, which GDM wants as a path, not a resource |
 | `/etc/dconf/db/gdm.d/95-thyx` | the greeter's font, clock and logo settings |
+| `/etc/dconf/profile/gdm` | only if the packaged profile reads no system database — see below |
 | `/usr/local/share/fonts/thyx/` | Plus Jakarta Sans |
 | `/var/lib/thyx/install.state` | what was installed, and what it was built from |
 | `~/.cache/thyx/thyx-install-*.log` | the log of the run |
 
-Nothing else is modified. The stock bundle is where it always was.
+Nothing else is modified, and none of those paths belongs to a package —
+`dpkg -S` reports no owner for any of them. The stock bundle is where it
+always was; the packaged dconf profile and the distro's gschema overrides are
+only ever read.
+
+### Why `/etc/dconf/profile/gdm`
+
+A keyfile under `/etc/dconf/db/gdm.d` does nothing on its own. It is only read
+if the greeter's dconf profile names a system database, and Ubuntu's does
+not:
+
+```
+$ cat /usr/share/dconf/profile/gdm
+user-db:user
+file-db:/var/lib/gdm3/greeter-dconf-defaults
+```
+
+No `system-db:gdm` line, so the keyfile is never consulted and every greeter
+setting is silently ignored — the failure looks exactly like a successful
+install.
+
+The fix is not to edit that file. `dconf` looks in `/etc/dconf/profile` before
+`/usr/share/dconf/profile`, and `/etc` is the administrator's to write: no
+package ships anything there, so a `gdm3` upgrade cannot clobber it. Thyx
+copies the packaged profile, inserts `system-db:gdm` below the writable
+database, and marks the result as its own. This is the same thing Ubuntu's own
+`gdm-config` does when it needs a greeter setting to stick.
+
+The copy is re-rendered from the packaged profile on every install, so if a
+future `gdm3` changes its own profile the shadow picks the change up instead
+of pinning the greeter to a stale database list. If something else already
+owns the file — `gdm-config` writes one too — Thyx adds the one line it needs
+and keeps the original for the uninstaller. If the profile already reaches
+`/etc/dconf/db/gdm.d`, as on distributions that ship it that way, Thyx writes
+nothing at all.
+
+`scripts/install` finishes by reading a key back through
+`DCONF_PROFILE=gdm`, so a profile that does not line up is reported rather
+than discovered at the login screen.
 
 The fonts have to be system wide because the greeter runs as the `gdm` user,
 before you have logged in. A font in your home directory does not exist as far

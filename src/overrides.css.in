@@ -97,19 +97,41 @@ stage {
   background-color: transparent;
 }
 
+/* Where the sign-in column sits.
+   GDM centres the form on the primary monitor and exposes no anchor for it,
+   and St has no percentage lengths to lay one out with. What it does honour
+   is padding, and a centred box grows both ways from its middle: padding one
+   flank by 2n slides everything visible n pixels the other way, whatever the
+   monitor is doing. FormPosition="center" leaves both at 0. */
 .login-dialog-user-selection-box {
-  padding: @FormPadding@px;
+  padding-top: @FormPadding@px;
+  padding-bottom: @FormPadding@px;
+  padding-left: @UserBoxPadLeft@px;
+  padding-right: @UserBoxPadRight@px;
   border-radius: @Radius@px;
   background-color: @FormBg@;
 }
 
-/* The vendor logo above the form. ShowLogo=false also clears the
-   org.gnome.login-screen logo key, which is what actually stops GDM drawing
-   it; this keeps the space it occupied from collapsing oddly either way. */
+.login-dialog-prompt-layout {
+  padding-left: @FormPadLeft@px;
+  padding-right: @FormPadRight@px;
+  spacing: @ListSpacing@px;
+}
+
+/* The wordmark at the foot of the screen.
+   GDM allocates this bin at `screen_bottom - bin_height` and does not clip
+   what is inside it, so a bin shorter than its image leaves the difference
+   hanging off the bottom edge -- which is exactly what a fixed height here
+   used to do to Ubuntu's 87px mark. Hence no height at all: the bin takes
+   the image's size, and the margin is what holds it clear of the edge.
+   With ShowLogo off the logo key is empty, the bin has no child, and this
+   collapses to nothing. */
 .login-dialog-logo-bin {
-  padding: @LogoPadding@px 0 0 0;
-  height: @LogoHeight@px;
-  opacity: @LogoOpacity@;
+  /* Padded on the same flank as the form, by the same amount, so the mark
+     travels with the column instead of stranding itself under the middle of
+     an empty screen. GDM centres this bin too, so the trick is the same one. */
+  padding: 0 @FormPadRight@px 0 @FormPadLeft@px;
+  margin: 0 0 @LogoMarginBottom@px 0;
 }
 
 .login-dialog-banner {
@@ -129,7 +151,9 @@ stage {
 }
 
 .login-dialog .user-widget .user-icon {
-  background-color: @AvatarBg@;
+  background-gradient-direction: vertical;
+  background-gradient-start: @FieldGradientTop@;
+  background-gradient-end: @AvatarBg@;
   color: @LoginFieldTextColor@;
   border: @AvatarBorderWidth@px solid @AvatarBorderColor@;
   border-radius: @AvatarRadius@px;
@@ -202,9 +226,14 @@ stage {
   min-height: @FieldHeight@px;
   padding: 0 @FieldPaddingX@px;
   border-radius: @FieldRadius@px;
-  border-width: 0;
-  border: none;
-  background-color: @FieldBg@;
+  /* A hairline in the accent, so the pill is legible against a bright
+     wallpaper instead of relying on the fill alone. */
+  border: 1px solid @AccentSoft@;
+  /* St's own gradient properties -- not CSS3 -- give the pill a little
+     depth without a second actor behind it. */
+  background-gradient-direction: vertical;
+  background-gradient-start: @FieldGradientTop@;
+  background-gradient-end: @FieldGradientBottom@;
   color: @LoginFieldTextColor@;
   caret-color: @LoginButtonBackgroundColor@;
   selection-background-color: @LoginButtonBackgroundColor@;
@@ -217,20 +246,26 @@ stage {
 
 .login-dialog .login-dialog-prompt-entry:hover,
 .login-dialog-prompt-entry:hover {
-  background-color: @FieldBgHover@;
+  border: 1px solid @AccentEdge@;
+  background-gradient-start: @FieldBgHover@;
+  background-gradient-end: @FieldBgFocus@;
   color: @LoginFieldTextColor@;
 }
 
 .login-dialog .login-dialog-prompt-entry:focus,
 .login-dialog-prompt-entry:focus {
-  background-color: @FieldBgFocus@;
+  border: 1px solid @FocusRingColor@;
+  background-gradient-start: @FieldBgFocus@;
+  background-gradient-end: @FieldBgFocus@;
   color: @LoginFieldTextColor@;
   box-shadow: inset 0 0 0 @FocusRingWidth@px @FocusRingColor@ !important;
 }
 
 .login-dialog .login-dialog-prompt-entry:insensitive,
 .login-dialog-prompt-entry:insensitive {
-  background-color: @FieldBg@;
+  border: 1px solid @AccentSoft@;
+  background-gradient-start: @FieldBg@;
+  background-gradient-end: @FieldBg@;
   color: @PlaceholderTextColor@;
 }
 
@@ -238,10 +273,6 @@ stage {
 .login-dialog-prompt-entry StLabel.hint-text {
   color: @PlaceholderTextColor@;
   font-weight: 500 !important;
-}
-
-.login-dialog-prompt-layout {
-  spacing: @ListSpacing@px;
 }
 
 /* --- Messages: hints, caps lock, wrong password -------------------------- */
@@ -349,6 +380,67 @@ stage {
 
 .login-dialog-button-box {
   spacing: @ListSpacing@px;
+}
+
+/* --- Session and login-options pickers -----------------------------------
+   These two live in the bottom-right corner and are the only way to pick
+   Wayland vs Xorg, or a different authentication method, before signing in.
+   GDM gives them no label at all -- each is a bare gear glyph on a flat
+   background, which is easy to read as decoration. Thyx draws them as
+   outlined pills that pick up the accent on hover, and gives the menu they
+   open a heading, so the choice announces itself. */
+
+.login-dialog-menu-button-box {
+  spacing: @ListSpacing@px;
+  padding: 0 @FormPadding@px @FormPadding@px @FormPadding@px;
+}
+
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-auth-menu-button,
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-session-list-button {
+  width: @MenuButtonSize@px;
+  height: @MenuButtonSize@px;
+  padding: 0;
+  border-radius: @MenuButtonRadius@px;
+  border: @MenuButtonBorderWidth@px solid @AccentEdge@;
+  background-color: @AccentSoft@;
+  color: @SystemButtonsIconsColor@;
+  transition-duration: @AnimationDuration@ms;
+}
+
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-auth-menu-button StIcon,
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-session-list-button StIcon {
+  icon-size: @MenuButtonIconSize@px;
+}
+
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-auth-menu-button:hover,
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-session-list-button:hover {
+  border: @MenuButtonBorderWidth@px solid @LoginButtonBackgroundColor@;
+  background-color: @AccentGlow@;
+  color: @HoverSystemButtonsIconsColor@;
+}
+
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-auth-menu-button:focus,
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-session-list-button:focus {
+  border: @MenuButtonBorderWidth@px solid @FocusRingColor@;
+  background-color: @AccentGlow@;
+  color: @HoverSystemButtonsIconsColor@;
+  box-shadow: inset 0 0 0 @FocusRingWidth@px @FocusRingColor@ !important;
+}
+
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-auth-menu-button:checked,
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-session-list-button:checked,
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-auth-menu-button:active,
+.login-dialog-menu-button-box .login-dialog-button.login-dialog-session-list-button:active {
+  border: @MenuButtonBorderWidth@px solid @LoginButtonBackgroundColor@;
+  background-color: @LoginButtonBackgroundColor@;
+  color: @LoginButtonTextColor@;
+}
+
+/* The heading inside the menu -- "Session" -- which stock GDM greys out. */
+.login-dialog-auth-menu-button-title {
+  color: @LoginButtonBackgroundColor@;
+  font-weight: 700 !important;
+  letter-spacing: 0.5px;
 }
 
 /* --- Session / auth-method menus ----------------------------------------- */
