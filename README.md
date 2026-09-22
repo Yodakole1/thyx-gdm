@@ -140,6 +140,7 @@ type and the palette. The form you see for real at the login screen.
 ./scripts/install           # builds, shows a plan, asks, installs
 ./scripts/install --yes     # no questions
 ./scripts/install --config presets/sakura.conf
+./scripts/install --check   # report drift, change nothing
 ```
 
 The installer prints exactly what it will do before it touches anything, asks
@@ -167,6 +168,30 @@ installs that alongside. Upstream's file stays exactly where it was, which is
 what makes the uninstall a one-liner.
 
 </details>
+
+### Staying current
+
+Because the install is a complete copy of whatever upstream theme existed at
+build time, it is a snapshot. A `gnome-shell` or distro-theme upgrade does not
+disturb it and does not error: `update-alternatives` keeps the selection on
+manual and goes on pointing at a perfectly valid file that is simply older
+than the shell now reading it. Nothing tells you this has happened, so:
+
+```bash
+./scripts/install --check    # or: just check
+```
+
+It reads nothing but `/var/lib/thyx/install.state`, needs no sudo, changes
+nothing, and compares the `source_sha256` recorded at build time against the
+upstream bundle that is installed today. It also confirms the greeter still
+resolves to Thyx and that the dconf profile still reaches Thyx's settings.
+Exit status is 0 when everything is current and 1 when it is not, so it suits
+a timer or an apt hook. The fix, whatever drifted, is `sudo ./scripts/install`.
+
+Within a stable release this drift is invisible — the greeter stylesheet
+barely moves across point updates. The one worth checking after is a release
+upgrade, where the greeter's JavaScript is new but the stylesheet it loads was
+built against the old one.
 
 ## Uninstallation
 

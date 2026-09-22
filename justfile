@@ -1,6 +1,7 @@
 alias b := build
 alias p := preview
 alias i := install
+alias c := check
 alias u := uninstall
 alias s := shell
 
@@ -34,12 +35,16 @@ preview-all:
 install:
 	bash ./scripts/install
 
+# is the installed theme still built from the upstream theme that is there now?
+check:
+	bash ./scripts/install --check
+
 uninstall:
 	bash ./scripts/uninstall
 
-# shellcheck everything
+# shellcheck everything, exactly the set ci checks
 @shell:
-	shellcheck -x ./scripts/build ./scripts/install ./scripts/uninstall ./scripts/preview
+	shellcheck -x ./scripts/build ./scripts/install ./scripts/uninstall ./scripts/preview ./scripts/lib/*.sh
 
 # clean build artefacts
 clean:

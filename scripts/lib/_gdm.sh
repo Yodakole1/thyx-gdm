@@ -451,3 +451,15 @@ _thyx_dconf_greeter_read() {
   command -v dconf >/dev/null 2>&1 || return 1
   DCONF_PROFILE="${THYX_DCONF_SYSTEM_DB}" dconf read "${key}" 2>/dev/null
 }
+
+# --- install state ---------------------------------------------------------
+
+# One value out of /var/lib/thyx/install.state. The file is world readable on
+# purpose: --check has to work without sudo, or nobody will run it.
+_thyx_state_get() {
+  local key="${1:?}"
+
+  [ -f "${THYX_STATE_FILE}" ] || return 1
+  awk -F= -v k="${key}" '$1 == k { sub("^[^=]*=", ""); print; exit }' \
+    "${THYX_STATE_FILE}"
+}

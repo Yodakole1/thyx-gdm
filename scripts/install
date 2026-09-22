@@ -25,14 +25,19 @@ trap '_thyx_on_err' ERR
 
 THYX_INSTALL_BUILD=1
 THYX_INSTALL_CONFIG=""
+THYX_INSTALL_CHECK=0
 
 _thyx_install_usage() {
   cat <<'EOF'
 usage: scripts/install [--config FILE] [--no-build] [--yes]
+       scripts/install --check
 
   --config FILE   install this config instead of theme.conf
   --no-build      install what is already in build/
   --yes, -y       do not ask for confirmation
+  --check         report whether the installed theme is still current,
+                  and change nothing. Exits 0 when it is, 1 when it is
+                  not, so it can be run from a timer or an apt hook.
 EOF
 }
 
@@ -41,6 +46,7 @@ _thyx_install_parse_args() {
     case "$1" in
       --config) shift; [ "${#}" -gt 0 ] || _thyx_die "--config needs a file"; THYX_INSTALL_CONFIG="$1" ;;
       --no-build) THYX_INSTALL_BUILD=0 ;;
+      --check) THYX_INSTALL_CHECK=1 ;;
       --yes|-y) THYX_AUTO_YES=1 ;;
       --help|-h) _thyx_install_usage; exit 0 ;;
       *) _thyx_die "unknown arg: $1" ;;
@@ -227,8 +233,158 @@ _thyx_install_verify() {
   fi
 }
 
+# --- --check ---------------------------------------------------------------
+#
+# The install is a snapshot: the bundle Thyx ships is a whole copy of whatever
+# upstream greeter theme existed at build time, with our block appended. That
+# copy does not move when gnome-shell or the distro theme is upgraded, and
+# nothing complains -- update-alternatives keeps pointing at a perfectly valid
+# file that is simply out of date. build.info records the source and its hash
+# for exactly this reason; this is what reads them back.
+#
+# Read-only, and deliberately sudo-free. Findings are collected rather than
+# fatal, so one run tells you everything that drifted.
+
+THYX_CHECK_FINDINGS=0
+
+_thyx_check_fail() {
+  THYX_CHECK_FINDINGS=$(( THYX_CHECK_FINDINGS + 1 ))
+  _thyx_warn "$*"
+}
+
+_thyx_check_source() {
+  local source recorded current
+
+  source="$(_thyx_state_get source || true)"
+  recorded="$(_thyx_state_get source_sha256 || true)"
+
+  if [ -z "${source}" ] || [ -z "${recorded}" ]; then
+    _thyx_check_fail "the state file records no source; reinstall to refresh it"
+    return 0
+  fi
+
+  if [ ! -f "${source}" ]; then
+    _thyx_check_fail "the upstream theme this was built from is gone: ${source}"
+    _thyx_log "  A distro upgrade can move it. Rebuild against whatever is there now."
+    _thyx_log ""
+    return 0
+  fi
+
+  current="$(sha256sum "${source}" | cut -d" " -f1)"
+
+  if [ "${current}" = "${recorded}" ]; then
+    _thyx_ok "built from the upstream theme that is installed today"
+    return 0
+  fi
+
+  _thyx_check_fail "upstream has moved since this was built"
+  _thyx_log "  source   ${source}"
+  _thyx_log "  built on ${recorded}"
+  _thyx_log "  now      ${current}"
+  _thyx_log ""
+  _thyx_log "  The greeter is loading a copy of the older bundle. Nothing is"
+  _thyx_log "  broken by that on its own, but upstream fixes and any resources"
+  _thyx_log "  added since are missing from it."
+  _thyx_log ""
+}
+
+_thyx_check_active() {
+  local active
+
+  if [ ! -f "${THYX_GRESOURCE_DST}" ]; then
+    _thyx_check_fail "the installed theme is gone: ${THYX_GRESOURCE_DST}"
+    return 0
+  fi
+
+  if ! gresource list "${THYX_GRESOURCE_DST}" >/dev/null 2>&1; then
+    _thyx_check_fail "the installed theme is not a readable resource bundle"
+    return 0
+  fi
+
+  active="$(_thyx_active_gresource || true)"
+
+  if [ -z "${active}" ]; then
+    _thyx_check_fail "no greeter theme is selected at all"
+  elif [ "${active}" != "${THYX_GRESOURCE_DST}" ]; then
+    _thyx_check_fail "the greeter points at ${active}, not at thyx"
+    _thyx_log "  Something reclaimed the selection. Reinstall to take it back."
+    _thyx_log ""
+  else
+    _thyx_ok "the greeter resolves to ${active}"
+  fi
+}
+
+_thyx_check_settings() {
+  local profile
+
+  if [ ! -f "${THYX_DCONF_FILE}" ]; then
+    _thyx_check_fail "greeter settings are missing: ${THYX_DCONF_FILE}"
+    return 0
+  fi
+
+  profile="$(_thyx_dconf_profile_effective || true)"
+
+  if [ -z "${profile}" ]; then
+    _thyx_check_fail "no greeter dconf profile at all; the settings cannot be read"
+    return 0
+  fi
+
+  if ! _thyx_dconf_profile_has_system_db "${profile}"; then
+    _thyx_check_fail "${profile} no longer reads system-db:${THYX_DCONF_SYSTEM_DB}"
+    _thyx_log "  The keyfile is still there and still inert: the font, clock and"
+    _thyx_log "  wordmark settings will not reach the greeter until this is put"
+    _thyx_log "  back. Reinstalling writes it again."
+    _thyx_log ""
+    return 0
+  fi
+
+  _thyx_ok "greeter settings are reachable through ${profile}"
+}
+
+_thyx_check() {
+  _thyx_step "check"
+
+  if [ ! -f "${THYX_STATE_FILE}" ]; then
+    _thyx_log "thyx is not installed (no ${THYX_STATE_FILE})."
+    exit 1
+  fi
+
+  _thyx_log "  installed ${THYX_STATE_FILE}"
+  _thyx_log "  on        $(_thyx_state_get installed || printf "unknown")"
+  _thyx_log "  from      $(_thyx_state_get config || printf "unknown")"
+  _thyx_log ""
+
+  _thyx_check_active
+  _thyx_check_source
+  _thyx_check_settings
+
+  _thyx_hr
+  if [ "${THYX_CHECK_FINDINGS}" -eq 0 ]; then
+    _thyx_ok "thyx is installed and current"
+    exit 0
+  fi
+
+  if [ "${THYX_CHECK_FINDINGS}" -eq 1 ]; then
+    _thyx_log "1 thing needs attention. In most cases:"
+  else
+    _thyx_log "${THYX_CHECK_FINDINGS} things need attention. In most cases:"
+  fi
+  _thyx_log ""
+  _thyx_log "    sudo ./scripts/install"
+  _thyx_log ""
+  exit 1
+}
+
 main() {
   _thyx_install_parse_args "$@"
+
+  if [ "${THYX_INSTALL_CHECK}" -eq 1 ]; then
+    command -v gresource >/dev/null 2>&1 ||
+      _thyx_die "gresource is missing (install libglib2.0-bin)"
+    command -v sha256sum >/dev/null 2>&1 || _thyx_die "sha256sum is missing"
+    _thyx_check
+  fi
+
   _thyx_install_require
 
   THYX_REPO_DIR="$(_thyx_find_repo "${THYX_SCRIPT_DIR}")"
