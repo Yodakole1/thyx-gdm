@@ -232,9 +232,20 @@ screen — GNOME Shell has no layer to play one on — so this is a still.
 | --- | --- | --- |
 | `Font` | Family name as fontconfig knows it | `"Plus Jakarta Sans"` |
 | `FontSize` | Base size, in points | `"11"` |
+| `WeightUI` | Top bar, placeholders, messages | `"400"` |
+| `WeightEmphasis` | Account name, warnings, menu headings | `"500"` |
+| `ClockWeight` | The clock in the top bar | `"400"` |
+| `FieldWeight` | What you type into the password pill | `"400"` |
+| `ButtonWeight` | The primary action | `"600"` |
 
 Ships with **Plus Jakarta Sans**, installed system wide by the installer so the
 greeter — which runs as its own user, long before yours — can see it.
+
+Plus Jakarta Sans is a variable face that reads heavy early, so those weights
+sit lower than the numbers suggest: 400 is the body and anything past 600
+turns the greeter into a poster. Yaru closes its own sheet with
+`* { font-weight: normal !important; }`, which is why every weight Thyx sets
+is forced — a class selector with `!important` outranks a universal one.
 
 To use something else, list what you have and use the exact family name:
 

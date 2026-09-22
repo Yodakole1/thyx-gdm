@@ -31,9 +31,19 @@ _thyx_conf_load() {
     # trim whitespace, then surrounding quotes, around the value
     value="${value#"${value%%[![:space:]]*}"}"
     value="${value%"${value##*[![:space:]]}"}"
+
+    # A quoted value ends at its closing quote; whatever follows is a
+    # trailing comment. Unquoted values are left whole, because the most
+    # common one here is a colour and #rrggbb is not a comment.
     case "${value}" in
-      '"'*'"') value="${value:1:${#value}-2}" ;;
-      "'"*"'") value="${value:1:${#value}-2}" ;;
+      '"'*)
+        value="${value#\"}"
+        value="${value%%\"*}"
+        ;;
+      "'"*)
+        value="${value#\'}"
+        value="${value%%\'*}"
+        ;;
     esac
 
     [ -n "${key}" ] || continue

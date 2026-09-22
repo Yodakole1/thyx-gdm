@@ -40,7 +40,7 @@ stage {
 #panel {
   background-color: transparent !important;
   height: @PanelHeight@px;
-  font-weight: 500 !important;
+  font-weight: @WeightUI@ !important;
 }
 
 #panel:overview,
@@ -77,7 +77,7 @@ stage {
 #panel .clock-display .clock {
   color: @TimeTextColor@;
   font-size: @ClockSize@pt;
-  font-weight: 600 !important;
+  font-weight: @ClockWeight@ !important;
   letter-spacing: -0.5px;
 }
 
@@ -142,7 +142,7 @@ stage {
 
 .login-dialog .user-widget .user-widget-label {
   color: @LoginFieldTextColor@;
-  font-weight: 600 !important;
+  font-weight: @WeightEmphasis@ !important;
 }
 
 .login-dialog .user-widget.vertical .user-widget-label {
@@ -203,7 +203,7 @@ stage {
 
 .login-dialog-not-listed-button .login-dialog-not-listed-label {
   color: @EnvironmentButtonTextColor@;
-  font-weight: 600 !important;
+  font-weight: @WeightUI@ !important;
 }
 
 .login-dialog-not-listed-button:hover,
@@ -238,7 +238,7 @@ stage {
   caret-color: @LoginButtonBackgroundColor@;
   selection-background-color: @LoginButtonBackgroundColor@;
   selected-color: @LoginButtonTextColor@;
-  font-weight: 600 !important;
+  font-weight: @FieldWeight@ !important;
   text-align: center;
   transition-duration: @AnimationDuration@ms;
   box-shadow: none;
@@ -272,14 +272,14 @@ stage {
 .login-dialog .login-dialog-prompt-entry StLabel.hint-text,
 .login-dialog-prompt-entry StLabel.hint-text {
   color: @PlaceholderTextColor@;
-  font-weight: 500 !important;
+  font-weight: @WeightUI@ !important;
 }
 
 /* --- Messages: hints, caps lock, wrong password -------------------------- */
 
 .login-dialog-message {
   color: @PlaceholderTextColor@;
-  font-weight: 500 !important;
+  font-weight: @WeightUI@ !important;
   padding-top: 6px;
 }
 
@@ -289,13 +289,13 @@ stage {
 
 .login-dialog-message-warning {
   color: @WarningTextColor@;
-  font-weight: 600 !important;
+  font-weight: @WeightEmphasis@ !important;
 }
 
 /* Caps Lock is announced through the generic warning label. */
 .caps-lock-warning-label {
   color: @WarningTextColor@;
-  font-weight: 600 !important;
+  font-weight: @WeightEmphasis@ !important;
 }
 
 /* --- Buttons ------------------------------------------------------------- */
@@ -347,7 +347,7 @@ stage {
   color: @LoginButtonTextColor@;
   background-color: @LoginButtonBackgroundColor@;
   border-radius: @Radius@px;
-  font-weight: 700 !important;
+  font-weight: @ButtonWeight@ !important;
 }
 
 .default.login-dialog-button.cancel-button:hover,
@@ -439,7 +439,7 @@ stage {
 /* The heading inside the menu -- "Session" -- which stock GDM greys out. */
 .login-dialog-auth-menu-button-title {
   color: @LoginButtonBackgroundColor@;
-  font-weight: 700 !important;
+  font-weight: @WeightEmphasis@ !important;
   letter-spacing: 0.5px;
 }
 

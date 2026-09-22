@@ -118,6 +118,12 @@ _thyx_build_tokens() {
     [AnimationDuration]="${anim}"
     [ClockSize]="${clock_size}"
 
+    [WeightUI]="$(_thyx_conf_number WeightUI 400)"
+    [WeightEmphasis]="$(_thyx_conf_number WeightEmphasis 500)"
+    [ClockWeight]="$(_thyx_conf_number ClockWeight 400)"
+    [FieldWeight]="$(_thyx_conf_number FieldWeight 400)"
+    [ButtonWeight]="$(_thyx_conf_number ButtonWeight 600)"
+
     [BackgroundColor]="${bg_color}"
     [LoginFieldTextColor]="${field_text}"
     [PlaceholderTextColor]="${placeholder}"
